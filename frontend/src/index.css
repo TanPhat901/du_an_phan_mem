@@ -50,7 +50,8 @@ body {
   transition: all 0.2s ease;
 }
 
-.btn-brand:hover, .btn-brand:focus {
+.btn-brand:hover,
+.btn-brand:focus {
   background-color: var(--primary-green-hover);
   color: #ffffff;
   transform: translateY(-1px);
@@ -262,7 +263,7 @@ body {
   right: -10%;
   width: 450px;
   height: 450px;
-  background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 70%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 70%);
   border-radius: 50%;
   pointer-events: none;
 }
@@ -359,6 +360,57 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 14px;
   padding: 1rem 1.2rem;
+}
+
+/* Green Brand Visual Card (Theo Ảnh Mới) */
+.auth-visual-hero-green {
+  background: linear-gradient(170deg, #0e5b47 0%, #0b4d3c 45%, #053327 100%);
+  border-radius: 20px;
+  padding: 1.75rem;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  min-height: 560px;
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-promo-card {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  padding: 1.25rem 1.35rem;
+}
+
+.auth-stat-card {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  flex: 1;
+}
+
+.auth-testimonial-card {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  padding: 0.9rem 1.15rem;
+}
+
+.strength-segment {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background-color: #e2e8f0;
+  transition: background-color 0.2s ease;
 }
 
 /* Social Buttons */
@@ -717,5 +769,3 @@ body {
   border-color: #0b4d3c;
   color: #ffffff;
 }
-
-
