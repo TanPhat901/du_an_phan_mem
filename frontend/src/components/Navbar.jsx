@@ -82,19 +82,33 @@ export default function Navbar({ onOpenAuth, onOpenMyBookings, activeTab, setAct
               <div className="d-flex align-items-center gap-2">
                 <div 
                   className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold shadow-sm"
-                  style={{ width: '36px', height: '36px', backgroundColor: '#0b4d3c' }}
+                  style={{ width: '38px', height: '38px', backgroundColor: currentUser.role === 'OWNER' ? '#0b4d3c' : '#10b981' }}
                 >
                   {currentUser.fullName ? currentUser.fullName.charAt(0).toUpperCase() : 'U'}
                 </div>
                 <div className="d-none d-sm-block text-start">
-                  <div className="small fw-bold text-dark">{currentUser.fullName}</div>
+                  <div className="d-flex align-items-center gap-1">
+                    <span className="small fw-bold text-dark">{currentUser.fullName}</span>
+                    <span 
+                      className={`badge rounded-pill ${currentUser.role === 'OWNER' ? 'bg-success text-white' : (currentUser.role === 'ADMIN' ? 'bg-danger text-white' : 'bg-light text-success border border-success-subtle')}`}
+                      style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem' }}
+                    >
+                      {currentUser.role === 'OWNER' ? '🏢 Chủ sân' : (currentUser.role === 'ADMIN' ? '👑 Admin' : '👤 Người chơi')}
+                    </span>
+                  </div>
+                  {currentUser.facilityName && (
+                    <div className="text-muted text-truncate" style={{ fontSize: '0.72rem', maxWidth: '150px' }}>
+                      {currentUser.facilityName}
+                    </div>
+                  )}
                   <button 
                     type="button" 
-                    className="btn btn-link p-0 text-muted small text-decoration-none"
+                    className="btn btn-link p-0 text-danger small text-decoration-none d-flex align-items-center gap-1"
                     style={{ fontSize: '0.75rem' }}
                     onClick={onLogout}
                   >
-                    Đăng xuất
+                    <i className="bi bi-box-arrow-right"></i>
+                    <span>Đăng xuất</span>
                   </button>
                 </div>
               </div>

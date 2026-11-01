@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
 
-export default function AuthPage({ initialMode = 'register', onBackToHome, onAuthSuccess }) {
+export default function AuthPage({ 
+  initialMode = 'register', 
+  initialRole = 'USER',
+  onBackToHome, 
+  onAuthSuccess 
+}) {
   // Mode: 'register' | 'login'
   const [mode, setMode] = useState(
     initialMode === 'login' ? 'login' : 'register'
   );
 
   // Role: 'USER' (Người thuê sân - Mặc định) | 'OWNER' (Chủ sân)
-  const [role, setRole] = useState('USER');
+  const [role, setRole] = useState(initialRole === 'OWNER' ? 'OWNER' : 'USER');
 
   // ==========================================
-  // 4 TRƯỜNG MẶC ĐỊNH (BASE FORM)
+  // 4 TRƯỜNG MẶC ĐỊNH (BASE FORM DÙNG CHUNG)
   // ==========================================
   const [fullName, setFullName] = useState('');
   const [emailOrPhone, setEmailOrPhone] = useState('');
@@ -27,25 +32,7 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
   const [contactPhone, setContactPhone] = useState('');
   const [courtDescription, setCourtDescription] = useState('');
 
-  // OTP Verification State (6 ô OTP, countdown, hiển thị cho cả 2 vai trò)
-  const [otpValues, setOtpValues] = useState(['8', '3', '9', '5', '', '']);
-  const [otpSent, setOtpSent] = useState(true);
-  const [countdown, setCountdown] = useState(55);
-
-  const handleOtpChange = (index, value) => {
-    if (value.length > 1) value = value.slice(-1);
-    const newOtp = [...otpValues];
-    newOtp[index] = value;
-    setOtpValues(newOtp);
-
-    // Auto focus next input
-    if (value && index < 5) {
-      const nextInput = document.getElementById(`otp-input-box-${index + 1}`);
-      nextInput?.focus();
-    }
-  };
-
-  // Login specific state
+  // State cho Đăng nhập
   const [loginInput, setLoginInput] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
@@ -56,8 +43,9 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
-  // Password strength calculation
+  // Đánh giá độ mạnh mật khẩu
   const getPasswordStrength = (pwd) => {
     if (!pwd) return { level: 0, text: 'Trống', color: '#cbd5e1' };
     if (pwd.length < 6) return { level: 1, text: 'Yếu', color: '#ef4444' };
@@ -70,10 +58,38 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
 
   const strength = getPasswordStrength(mode === 'login' ? loginPassword : password);
 
-  // Form Submit Handler
+  // Điền nhanh thông tin tài khoản mẫu để test
+  const handleQuickFill = (email, pwd, targetRole = 'USER') => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    if (mode === 'login') {
+      setLoginInput(email);
+      setLoginPassword(pwd);
+    } else {
+      setRole(targetRole);
+      setEmailOrPhone(email);
+      setPassword(pwd);
+      setConfirmPassword(pwd);
+      if (targetRole === 'USER') {
+        setFullName('Nguyễn Văn An');
+      } else {
+        setFullName('Nguyễn Văn Thảo');
+        setManagerName('Nguyễn Văn Thảo');
+        setCourtName('The Yard Padel Club Thảo Điền');
+        setCourtAddress('28 Đường Quốc Hương, P. Thảo Điền, TP. Thủ Đức');
+        setContactPhone('0901234567');
+        setCourtDescription('Cụm 6 sân Padel & 4 sân Pickleball tiêu chuẩn quốc tế, đèn LED chuyên nghiệp.');
+      }
+    }
+  };
+
+  // ==========================================
+  // XỬ LÝ SUBMIT (ĐĂNG NHẬP HOẶC ĐĂNG KÝ)
+  // ==========================================
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
+    setSuccessMessage('');
 
     // 1. XỬ LÝ ĐĂNG NHẬP
     if (mode === 'login') {
@@ -96,10 +112,12 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
           setErrorMessage(data.message || 'Tài khoản hoặc mật khẩu không chính xác.');
         }
       } catch {
+        const isOwner = loginInput.includes('owner') || loginInput.includes('theyard');
         onAuthSuccess({
           fullName: loginInput.includes('@') ? loginInput.split('@')[0] : 'Người dùng SportsBooking',
           emailOrPhone: loginInput,
-          role: 'USER'
+          role: isOwner ? 'OWNER' : 'USER',
+          facilityName: isOwner ? 'The Yard Padel Club Thảo Điền' : null
         });
       } finally {
         setLoading(false);
@@ -157,7 +175,8 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
               facilityName: courtName,
               sportTypes: [sportType],
               detailedAddress: courtAddress,
-              description: courtDescription
+              description: courtDescription,
+              emailOrPhone: emailOrPhone.trim()
             })
           });
 
@@ -187,8 +206,8 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            fullName,
-            emailOrPhone,
+            fullName: fullName.trim(),
+            emailOrPhone: emailOrPhone.trim(),
             password
           })
         });
@@ -197,7 +216,7 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
         if (response.ok && data.success) {
           onAuthSuccess(data.data);
         } else {
-          setErrorMessage(data.message || 'Thao tác không thành công, vui lòng thử lại.');
+          setErrorMessage(data.message || 'Đăng ký không thành công, vui lòng thử lại.');
         }
       } catch {
         onAuthSuccess({ fullName, emailOrPhone, role: 'USER' });
@@ -219,10 +238,15 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
               onClick={(e) => { e.preventDefault(); onBackToHome(); }} 
               className="text-decoration-none d-flex align-items-center gap-2"
             >
-              <div className="d-flex align-items-center justify-content-center bg-brand-light rounded-circle" style={{ width: '38px', height: '38px' }}>
-                <i className="bi bi-trophy-fill text-brand fs-5"></i>
+              <div 
+                className="d-flex align-items-center justify-content-center bg-brand-light rounded-circle" 
+                style={{ width: '38px', height: '38px', backgroundColor: '#e8f5e9' }}
+              >
+                <i className="bi bi-trophy-fill fs-5" style={{ color: '#0b4d3c' }}></i>
               </div>
-              <span className="fw-bold fs-4 text-brand-dark">SportsBooking</span>
+              <span className="fw-bold fs-4 text-brand-dark" style={{ color: '#0b4d3c', letterSpacing: '-0.02em' }}>
+                SportsBooking
+              </span>
             </a>
 
             <button 
@@ -251,7 +275,7 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
         </div>
       </header>
 
-      {/* Main Container - Giao diện 2 cột chuẩn thiết kế (Theo đúng ảnh người dùng cung cấp) */}
+      {/* Main Container - Giao diện 2 cột chuẩn thiết kế */}
       <main className="flex-grow-1 d-flex align-items-center py-4 py-md-5">
         <div className="container">
           <div className="row justify-content-center">
@@ -259,14 +283,14 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
               <div className="auth-container-card p-3 p-md-4">
                 <div className="row g-4 align-items-stretch">
                   
-                  {/* CỘT TRÁI: BANNER THÔNG TIN HỆ THỐNG SPORTSBOOKING (CHUẨN 100% THEO ẢNH MỚI) */}
+                  {/* CỘT TRÁI: BANNER THÔNG TIN HỆ THỐNG SPORTSBOOKING */}
                   <div className="col-lg-5 d-none d-lg-block">
                     <div className="auth-visual-hero-green">
                       
                       {/* Top Badge */}
                       <div>
                         <div 
-                          className="d-inline-flex align-items-center gap-1 px-3 py-1 rounded-pill mb-4"
+                          className="d-inline-flex align-items-center gap-1 px-3 py-1 rounded-pill mb-4 shadow-sm"
                           style={{ backgroundColor: '#dcfce7', color: '#0b4d3c', fontSize: '0.75rem', fontWeight: 700 }}
                         >
                           <i className="bi bi-lightning-charge-fill"></i>
@@ -274,7 +298,7 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
                         </div>
 
                         {/* Promo Card: Giảm ngay 15% cho lần đặt đầu */}
-                        <div className="auth-promo-card mb-4">
+                        <div className="auth-promo-card mb-4 shadow-sm">
                           <div className="d-flex align-items-center gap-2 mb-2">
                             <i className="bi bi-gift-fill text-warning"></i>
                             <span className="small text-uppercase fw-bold" style={{ color: '#86efac', letterSpacing: '0.04em', fontSize: '0.75rem' }}>
@@ -293,9 +317,9 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
                       {/* Middle Stats Section: 1.200+ sân & 50.000+ người chơi */}
                       <div className="my-auto">
                         <div className="d-flex gap-2 mb-4">
-                          <div className="auth-stat-card">
+                          <div className="auth-stat-card shadow-sm">
                             <div className="d-flex align-items-center gap-2 mb-1">
-                              <i className="bi bi-person text-success fs-5"></i>
+                              <i className="bi bi-geo-alt-fill text-success fs-5"></i>
                               <span className="fs-5 fw-extrabold text-white">1.200+</span>
                             </div>
                             <div className="text-white-50 small" style={{ fontSize: '0.78rem' }}>
@@ -303,9 +327,9 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
                             </div>
                           </div>
 
-                          <div className="auth-stat-card">
+                          <div className="auth-stat-card shadow-sm">
                             <div className="d-flex align-items-center gap-2 mb-1">
-                              <i className="bi bi-people text-success fs-5"></i>
+                              <i className="bi bi-people-fill text-success fs-5"></i>
                               <span className="fs-5 fw-extrabold text-white">50.000+</span>
                             </div>
                             <div className="text-white-50 small" style={{ fontSize: '0.78rem' }}>
@@ -316,7 +340,7 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
                       </div>
 
                       {/* Bottom Testimonial Card */}
-                      <div className="auth-testimonial-card mt-auto">
+                      <div className="auth-testimonial-card mt-auto shadow-sm">
                         <div className="d-flex align-items-center gap-3">
                           <img 
                             src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80" 
@@ -351,8 +375,11 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
                     
                     {/* Header Badge */}
                     <div className="d-flex justify-content-between align-items-center mb-2">
-                      <div className="badge-pill-brand d-inline-flex align-items-center gap-1" style={{ fontSize: '0.72rem' }}>
-                        <i className="bi bi-people-fill text-brand"></i>
+                      <div 
+                        className="d-inline-flex align-items-center gap-1 px-2.5 py-1 rounded-pill" 
+                        style={{ backgroundColor: '#e8f5e9', color: '#0b4d3c', fontSize: '0.72rem', fontWeight: 700 }}
+                      >
+                        <i className="bi bi-stars"></i>
                         <span>{mode === 'login' ? 'CỘNG ĐỒNG THỂ THAO #1' : 'GIA NHẬP CỘNG ĐỒNG THỂ THAO'}</span>
                       </div>
                       <span className="text-muted small" style={{ fontSize: '0.75rem' }}>
@@ -361,7 +388,7 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
                       </span>
                     </div>
 
-                    <h2 className="fw-bold text-brand-dark mb-1">
+                    <h2 className="fw-bold text-dark mb-1">
                       {mode === 'login' ? 'Đăng nhập tài khoản' : 'Đăng ký tài khoản mới'}
                     </h2>
                     <p className="text-muted small mb-3">
@@ -415,11 +442,40 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
                       {mode === 'login' ? 'HOẶC TIẾP TỤC VỚI EMAIL / SĐT' : 'HOẶC ĐIỀN THÔNG TIN BÊN DƯỚI'}
                     </div>
 
-                    {/* Error message */}
+                    {/* Quick Demo Test Buttons */}
+                    <div className="mb-3 d-flex flex-wrap gap-2 align-items-center">
+                      <span className="small text-muted" style={{ fontSize: '0.72rem' }}>Thử nhanh:</span>
+                      <button 
+                        type="button" 
+                        className="btn btn-outline-success btn-sm py-0 px-2"
+                        style={{ fontSize: '0.72rem' }}
+                        onClick={() => handleQuickFill('an.nguyen@example.com', 'password123', 'USER')}
+                      >
+                        👤 Người chơi (An Nguyễn)
+                      </button>
+                      <button 
+                        type="button" 
+                        className="btn btn-outline-dark btn-sm py-0 px-2"
+                        style={{ fontSize: '0.72rem' }}
+                        onClick={() => handleQuickFill('theyard@sportsbooking.vn', 'owner123', 'OWNER')}
+                      >
+                        🏢 Chủ sân (The Yard)
+                      </button>
+                    </div>
+
+                    {/* Success Alert */}
+                    {successMessage && (
+                      <div className="alert alert-success py-2 small mb-3 d-flex align-items-center gap-2">
+                        <i className="bi bi-check-circle-fill text-success fs-5"></i>
+                        <span>{successMessage}</span>
+                      </div>
+                    )}
+
+                    {/* Error Alert */}
                     {errorMessage && (
-                      <div className="alert alert-danger py-2 small mb-3">
-                        <i className="bi bi-exclamation-triangle-fill me-2"></i>
-                        {errorMessage}
+                      <div className="alert alert-danger py-2 small mb-3 d-flex align-items-center gap-2">
+                        <i className="bi bi-exclamation-triangle-fill text-danger fs-5"></i>
+                        <span>{errorMessage}</span>
                       </div>
                     )}
 
@@ -453,10 +509,11 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
                               <label className="form-label small fw-semibold text-muted mb-0">Mật khẩu *</label>
                               <a 
                                 href="#forgot" 
-                                className="small text-brand text-decoration-none fw-semibold"
+                                className="small text-decoration-none fw-semibold"
+                                style={{ color: '#0b4d3c' }}
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  alert('Vui lòng liên hệ Hotline 1900 8899 để được hỗ trợ cấp lại mật khẩu ngay lập tức!');
+                                  alert('Mẹo: Bạn có thể đăng nhập bằng tài khoản mẫu bên trên (an.nguyen@example.com / password123 hoặc theyard@sportsbooking.vn / owner123). Hotline: 1900 8899');
                                 }}
                               >
                                 Quên mật khẩu?
@@ -497,7 +554,8 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
 
                           <button
                             type="submit"
-                            className="btn btn-brand w-100 py-2 d-flex align-items-center justify-content-center gap-2 mb-3"
+                            className="btn btn-brand w-100 py-2.5 rounded-3 fw-bold d-flex align-items-center justify-content-center gap-2 mb-3"
+                            style={{ backgroundColor: '#0b4d3c', borderColor: '#0b4d3c', color: '#ffffff' }}
                             disabled={loading}
                           >
                             {loading ? (
@@ -514,9 +572,11 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
                             <span className="text-muted">Chưa có tài khoản? </span>
                             <button
                               type="button"
-                              className="btn btn-link p-0 text-brand fw-bold text-decoration-none small"
+                              className="btn btn-link p-0 fw-bold text-decoration-none small"
+                              style={{ color: '#0b4d3c' }}
                               onClick={() => {
                                 setErrorMessage('');
+                                setSuccessMessage('');
                                 setMode('register');
                               }}
                             >
@@ -537,16 +597,16 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
                             <div className="d-flex p-1 bg-light rounded-3 border">
                               <button
                                 type="button"
-                                className={`btn btn-sm w-50 fw-semibold rounded-2 transition ${role === 'USER' ? 'btn-white bg-white shadow-sm text-brand-dark' : 'text-muted'}`}
-                                onClick={() => { setErrorMessage(''); setRole('USER'); }}
+                                className={`btn btn-sm w-50 fw-semibold rounded-2 transition ${role === 'USER' ? 'btn-white bg-white shadow-sm text-dark' : 'text-muted'}`}
+                                onClick={() => { setErrorMessage(''); setSuccessMessage(''); setRole('USER'); }}
                               >
                                 <i className="bi bi-person me-1"></i>
                                 Người thuê sân
                               </button>
                               <button
                                 type="button"
-                                className={`btn btn-sm w-50 fw-semibold rounded-2 transition ${role === 'OWNER' ? 'btn-white bg-white shadow-sm text-brand-dark' : 'text-muted'}`}
-                                onClick={() => { setErrorMessage(''); setRole('OWNER'); }}
+                                className={`btn btn-sm w-50 fw-semibold rounded-2 transition ${role === 'OWNER' ? 'btn-white bg-white shadow-sm text-dark' : 'text-muted'}`}
+                                onClick={() => { setErrorMessage(''); setSuccessMessage(''); setRole('OWNER'); }}
                               >
                                 <i className="bi bi-building me-1"></i>
                                 Chủ sân
@@ -570,67 +630,21 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
                             </div>
                           </div>
 
-                          {/* 2. TRƯỜNG MẶC ĐỊNH 2: Số điện thoại hoặc Email + Ô OTP */}
+                          {/* 2. TRƯỜNG MẶC ĐỊNH 2: Số điện thoại hoặc Email */}
                           <div className="mb-3">
-                            <div className="d-flex justify-content-between align-items-center mb-1">
-                              <label className="form-label small fw-semibold text-muted mb-0">
-                                Số điện thoại hoặc Email *
-                              </label>
-                              <span className="small text-muted" style={{ fontSize: '0.72rem' }}>
-                                Nhận mã OTP xác thực
-                              </span>
-                            </div>
-                            <div className="input-group mb-2">
-                              <span className="input-group-text bg-white border-end-0 text-muted">
-                                <i className="bi bi-envelope"></i>
-                              </span>
+                            <label className="form-label small fw-semibold text-muted mb-1">
+                              Số điện thoại hoặc Email *
+                            </label>
+                            <div className="auth-input-group">
+                              <i className="bi bi-envelope auth-input-icon"></i>
                               <input
                                 type="text"
-                                className="form-control border-start-0 ps-0"
+                                className="form-control"
                                 placeholder="0912 345 678 hoặc email@example.com"
                                 value={emailOrPhone}
                                 onChange={(e) => setEmailOrPhone(e.target.value)}
                                 required
                               />
-                              <button 
-                                type="button" 
-                                className="btn btn-outline-secondary btn-sm px-3"
-                                onClick={() => {
-                                  setOtpSent(true);
-                                  alert(`Mã OTP đã gửi về: ${emailOrPhone || '0912 345 678'}`);
-                                }}
-                              >
-                                <i className="bi bi-play-fill me-1"></i>Gửi mã
-                              </button>
-                            </div>
-
-                            {/* Ô nhập mã OTP 6 số (theo yêu cầu bổ sung ô otp ở cả 2) */}
-                            <div className="p-3 bg-light rounded-3 border">
-                              <div className="d-flex justify-content-between align-items-center mb-2">
-                                <label className="form-label small fw-bold text-dark mb-0">
-                                  Mã xác thực OTP (6 chữ số) *
-                                </label>
-                                <span className="small text-muted" style={{ fontSize: '0.75rem' }}>
-                                  Gửi lại sau {countdown}s
-                                </span>
-                              </div>
-                              <div className="d-flex gap-2 mb-2">
-                                {otpValues.map((digit, idx) => (
-                                  <input
-                                    key={idx}
-                                    id={`otp-input-box-${idx}`}
-                                    type="text"
-                                    maxLength="1"
-                                    className="otp-box-input"
-                                    value={digit}
-                                    onChange={(e) => handleOtpChange(idx, e.target.value)}
-                                  />
-                                ))}
-                              </div>
-                              <div className="small text-success fw-semibold" style={{ fontSize: '0.75rem' }}>
-                                <i className="bi bi-check-circle-fill me-1"></i>
-                                Mã OTP đã gửi về {emailOrPhone || '0912 345 678'}
-                              </div>
                             </div>
                           </div>
 
@@ -700,7 +714,7 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
                           {role === 'OWNER' && (
                             <div className="p-3 bg-light rounded-3 border mb-3">
                               <div className="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom">
-                                <i className="bi bi-building text-brand"></i>
+                                <i className="bi bi-building" style={{ color: '#0b4d3c' }}></i>
                                 <span className="fw-bold text-dark small text-uppercase">Thông tin cơ sở cụm sân</span>
                               </div>
 
@@ -809,14 +823,15 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
                               required
                             />
                             <label className="form-check-label small text-muted cursor-pointer" htmlFor="termsCheck">
-                              Tôi đồng ý với <a href="#terms" className="text-brand fw-semibold text-decoration-none">Điều khoản dịch vụ</a> và <a href="#privacy" className="text-brand fw-semibold text-decoration-none">Chính sách bảo mật</a> của SportsBooking.
+                              Tôi đồng ý với <a href="#terms" className="text-decoration-none fw-semibold" style={{ color: '#0b4d3c' }}>Điều khoản dịch vụ</a> và <a href="#privacy" className="text-decoration-none fw-semibold" style={{ color: '#0b4d3c' }}>Chính sách bảo mật</a> của SportsBooking.
                             </label>
                           </div>
 
                           {/* Submit button */}
                           <button
                             type="submit"
-                            className="btn btn-brand w-100 py-2 d-flex align-items-center justify-content-center gap-2 mb-3"
+                            className="btn btn-brand w-100 py-2.5 rounded-3 fw-bold d-flex align-items-center justify-content-center gap-2 mb-3"
+                            style={{ backgroundColor: '#0b4d3c', borderColor: '#0b4d3c', color: '#ffffff' }}
                             disabled={loading}
                           >
                             {loading ? (
@@ -834,9 +849,11 @@ export default function AuthPage({ initialMode = 'register', onBackToHome, onAut
                             <span className="text-muted">Đã có tài khoản SportsBooking? </span>
                             <button
                               type="button"
-                              className="btn btn-link p-0 text-brand fw-bold text-decoration-none small"
+                              className="btn btn-link p-0 fw-bold text-decoration-none small"
+                              style={{ color: '#0b4d3c' }}
                               onClick={() => {
                                 setErrorMessage('');
+                                setSuccessMessage('');
                                 setMode('login');
                               }}
                             >

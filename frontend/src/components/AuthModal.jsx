@@ -29,15 +29,15 @@ export default function AuthModal({ initialMode = 'login', onClose, onAuthSucces
           <div className="modal-body">
             {/* Mode switch */}
             <div className="d-flex bg-light p-1 rounded-3 mb-4">
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className={`btn btn-sm w-50 fw-semibold ${mode === 'login' ? 'btn-white shadow-sm bg-white' : 'text-muted'}`}
                 onClick={() => setMode('login')}
               >
                 Đăng nhập
               </button>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className={`btn btn-sm w-50 fw-semibold ${mode === 'register' ? 'btn-white shadow-sm bg-white' : 'text-muted'}`}
                 onClick={() => setMode('register')}
               >
@@ -49,9 +49,9 @@ export default function AuthModal({ initialMode = 'login', onClose, onAuthSucces
               {mode === 'register' && (
                 <div className="mb-3">
                   <label className="form-label small text-muted">Họ và tên</label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
+                  <input
+                    type="text"
+                    className="form-control"
                     placeholder="Nguyễn Văn A"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
@@ -62,9 +62,9 @@ export default function AuthModal({ initialMode = 'login', onClose, onAuthSucces
 
               <div className="mb-3">
                 <label className="form-label small text-muted">Email hoặc Số điện thoại</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
+                <input
+                  type="text"
+                  className="form-control"
                   placeholder="name@example.com hoặc 090..."
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -74,9 +74,9 @@ export default function AuthModal({ initialMode = 'login', onClose, onAuthSucces
 
               <div className="mb-3">
                 <label className="form-label small text-muted">Mật khẩu</label>
-                <input 
-                  type="password" 
-                  className="form-control" 
+                <input
+                  type="password"
+                  className="form-control"
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

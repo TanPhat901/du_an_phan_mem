@@ -191,10 +191,11 @@ export default function App() {
   };
 
   // If in Login or Register Page mode
-  if (['login', 'register'].includes(currentView)) {
+  if (['login', 'register', 'register-owner'].includes(currentView)) {
     return (
       <AuthPage
-        initialMode={currentView}
+        initialMode={currentView === 'login' ? 'login' : 'register'}
+        initialRole={currentView === 'register-owner' ? 'OWNER' : 'USER'}
         onBackToHome={() => setCurrentView('home')}
         onAuthSuccess={handleAuthSuccess}
       />
