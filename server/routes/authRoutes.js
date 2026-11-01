@@ -1,21 +1,22 @@
 const express = require('express');
 const router = express.Router();
+const { pool, isDbConnected } = require('../config/db');
 
-// Mock in-memory user database
-let users = [
+// In-memory store for fallback
+let fallbackUsers = [
   {
-    id: 'USR-001',
+    id: 5,
     fullName: 'Nguyễn Văn An',
     emailOrPhone: 'an.nguyen@example.com',
     password: 'password123',
-    role: 'customer',
+    role: 'USER',
     avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
     createdAt: new Date().toISOString()
   }
 ];
 
 // POST /api/auth/login
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { emailOrPhone, password } = req.body;
 
   if (!emailOrPhone || !password) {
@@ -25,14 +26,48 @@ router.post('/login', (req, res) => {
     });
   }
 
-  // Find user (or accept test account if password matches)
-  const user = users.find(
-    u => u.emailOrPhone.toLowerCase() === emailOrPhone.toLowerCase() && u.password === password
+  const cleanInput = emailOrPhone.toLowerCase().trim();
+
+  // 1. Check PostgreSQL
+  if (isDbConnected()) {
+    try {
+      const result = await pool.query(
+        `SELECT * FROM users 
+         WHERE (LOWER(email) = $1 OR phone = $1) AND password_hash = $2`,
+        [cleanInput, password]
+      );
+
+      if (result.rows.length > 0) {
+        const user = result.rows[0];
+        return res.json({
+          success: true,
+          source: 'PostgreSQL Database',
+          message: 'Đăng nhập thành công!',
+          data: {
+            id: user.user_id,
+            fullName: user.full_name,
+            email: user.email,
+            phone: user.phone,
+            role: user.role,
+            avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
+            token: `jwt-token-${user.user_id}`
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('⚠️ Lỗi login PostgreSQL:', err.message);
+    }
+  }
+
+  // 2. Fallback
+  const user = fallbackUsers.find(
+    u => u.emailOrPhone.toLowerCase() === cleanInput && u.password === password
   );
 
   if (user) {
     return res.json({
       success: true,
+      source: 'Memory Fallback',
       message: 'Đăng nhập thành công!',
       data: {
         id: user.id,
@@ -44,17 +79,18 @@ router.post('/login', (req, res) => {
     });
   }
 
-  // Allow flexible demo login if valid formatted input
+  // Accept demo login if password >= 6 chars
   if (password.length >= 6) {
     const demoUser = {
-      id: `USR-${Date.now().toString().slice(-4)}`,
-      fullName: emailOrPhone.includes('@') ? emailOrPhone.split('@')[0] : 'Người dùng SportsBooking',
-      emailOrPhone,
+      id: Date.now(),
+      fullName: cleanInput.includes('@') ? cleanInput.split('@')[0] : 'Người dùng SportsBooking',
+      emailOrPhone: cleanInput,
       avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
       token: `mock-jwt-token-demo`
     };
     return res.json({
       success: true,
+      source: 'Demo Auth',
       message: 'Đăng nhập thành công!',
       data: demoUser
     });
@@ -62,12 +98,12 @@ router.post('/login', (req, res) => {
 
   return res.status(401).json({
     success: false,
-    message: 'Mật khẩu phải từ 6 ký tự trở lên hoặc tài khoản không chính xác.'
+    message: 'Tài khoản hoặc mật khẩu không chính xác.'
   });
 });
 
 // POST /api/auth/register
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
   const { fullName, emailOrPhone, password } = req.body;
 
   if (!fullName || !emailOrPhone || !password) {
@@ -84,7 +120,54 @@ router.post('/register', (req, res) => {
     });
   }
 
-  const existing = users.find(u => u.emailOrPhone.toLowerCase() === emailOrPhone.toLowerCase());
+  const cleanInput = emailOrPhone.toLowerCase().trim();
+  const isEmail = cleanInput.includes('@');
+  const email = isEmail ? cleanInput : `${cleanInput}@user.sportsbooking.vn`;
+  const phone = isEmail ? null : cleanInput;
+
+  // 1. Check & Insert PostgreSQL
+  if (isDbConnected()) {
+    try {
+      const existing = await pool.query(
+        'SELECT user_id FROM users WHERE LOWER(email) = $1 OR phone = $2',
+        [email, phone || '']
+      );
+
+      if (existing.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tài khoản với Email hoặc SĐT này đã tồn tại!'
+        });
+      }
+
+      const result = await pool.query(
+        `INSERT INTO users (full_name, email, password_hash, phone, role, status)
+         VALUES ($1, $2, $3, $4, 'USER', 'ACTIVE') RETURNING *`,
+        [fullName.trim(), email, password, phone]
+      );
+
+      const newUser = result.rows[0];
+      return res.status(201).json({
+        success: true,
+        source: 'PostgreSQL Database',
+        message: 'Đăng ký tài khoản thành công!',
+        data: {
+          id: newUser.user_id,
+          fullName: newUser.full_name,
+          email: newUser.email,
+          phone: newUser.phone,
+          role: newUser.role,
+          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
+          token: `jwt-token-${newUser.user_id}`
+        }
+      });
+    } catch (err) {
+      console.warn('⚠️ Lỗi register PostgreSQL:', err.message);
+    }
+  }
+
+  // 2. Fallback
+  const existing = fallbackUsers.find(u => u.emailOrPhone.toLowerCase() === cleanInput);
   if (existing) {
     return res.status(400).json({
       success: false,
@@ -93,20 +176,21 @@ router.post('/register', (req, res) => {
   }
 
   const newUser = {
-    id: `USR-${Date.now().toString().slice(-4)}`,
+    id: Date.now(),
     fullName,
-    emailOrPhone,
+    emailOrPhone: cleanInput,
     password,
-    role: 'customer',
+    role: 'USER',
     avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
     createdAt: new Date().toISOString()
   };
 
-  users.push(newUser);
+  fallbackUsers.push(newUser);
 
   res.status(201).json({
     success: true,
-    message: 'Đăng ký tài khoản thành công! Bạn có thể sử dụng ngay lập tức.',
+    source: 'Memory Fallback',
+    message: 'Đăng ký tài khoản thành công!',
     data: {
       id: newUser.id,
       fullName: newUser.fullName,
@@ -118,4 +202,3 @@ router.post('/register', (req, res) => {
 });
 
 module.exports = router;
-

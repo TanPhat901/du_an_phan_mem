@@ -5,6 +5,7 @@
   "scripts": {
     "server": "cd server && npm start",
     "server:dev": "cd server && npm run dev",
+    "db:init": "cd server && npm run db:init",
     "frontend": "cd frontend && npm run dev",
     "build": "cd frontend && npm run build"
   },

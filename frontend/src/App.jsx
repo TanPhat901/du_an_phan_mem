@@ -9,6 +9,7 @@ import BookingModal from './components/BookingModal';
 import PartnerModal from './components/PartnerModal';
 import MyBookingsModal from './components/MyBookingsModal';
 import AuthPage from './components/AuthPage';
+import CourtDetailPage from './components/CourtDetailPage';
 
 // Initial fallback courts identical to backend JSON & screenshot
 const INITIAL_COURTS = [
@@ -85,6 +86,7 @@ export default function App() {
   const [maxPrice, setMaxPrice] = useState('');
 
   // Modals state
+  const [selectedCourtDetail, setSelectedCourtDetail] = useState(null);
   const [selectedCourtForBooking, setSelectedCourtForBooking] = useState(null);
   const [showPartnerModal, setShowPartnerModal] = useState(false);
   const [showMyBookings, setShowMyBookings] = useState(false);
@@ -195,6 +197,54 @@ export default function App() {
     );
   }
 
+  // If in Court Detail Page mode
+  if (currentView === 'court-detail') {
+    return (
+      <div className="min-vh-100 d-flex flex-column bg-white">
+        {toastMessage && (
+          <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1100 }}>
+            <div className="alert alert-success shadow-lg border-0 d-flex align-items-center gap-2 mb-0 py-3 px-4 rounded-3 text-dark">
+              <i className="bi bi-check-circle-fill text-success fs-5"></i>
+              <div>
+                <strong>Thông báo:</strong> {toastMessage}
+              </div>
+              <button type="button" className="btn-close ms-auto" onClick={() => setToastMessage('')}></button>
+            </div>
+          </div>
+        )}
+
+        <CourtDetailPage
+          court={selectedCourtDetail}
+          onBackToHome={() => {
+            setCurrentView('home');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          onProceedBooking={(bookingPlan) => {
+            setSelectedCourtForBooking({
+              id: selectedCourtDetail?.id || 1,
+              name: bookingPlan.courtName,
+              category: selectedCourtDetail?.category || 'BÓNG ĐÁ & PADEL',
+              pricePerHour: bookingPlan.price,
+              priceFormatted: `${Number(bookingPlan.price).toLocaleString('vi-VN')}đ`,
+              imageUrl: selectedCourtDetail?.imageUrl || 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
+              availableSlots: [bookingPlan.timeSlot]
+            });
+          }}
+          currentUser={currentUser}
+          onOpenAuth={(mode) => setCurrentView(mode)}
+        />
+
+        {selectedCourtForBooking && (
+          <BookingModal 
+            court={selectedCourtForBooking}
+            onClose={() => setSelectedCourtForBooking(null)}
+            onBookingSuccess={handleBookingSuccess}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="min-vh-100 d-flex flex-column bg-white">
       {/* Toast Alert */}
@@ -252,7 +302,11 @@ export default function App() {
         <CourtList 
           courts={courts}
           loading={loading}
-          onBookNow={(court) => setSelectedCourtForBooking(court)}
+          onBookNow={(court) => {
+            setSelectedCourtDetail(court);
+            setCurrentView('court-detail');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
         />
 
         {/* Partner Section Banner */}
