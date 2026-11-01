@@ -201,4 +201,107 @@ router.post('/register', async (req, res) => {
   });
 });
 
+// POST /api/auth/register-owner - Đăng ký tài khoản Chủ sân
+router.post('/register-owner', async (req, res) => {
+  const {
+    email,
+    password,
+    representativeName,
+    phone,
+    facilityName,
+    sportTypes,
+    city,
+    district,
+    detailedAddress,
+    description
+  } = req.body;
+
+  if (!email || !password || !representativeName || !phone || !facilityName) {
+    return res.status(400).json({
+      success: false,
+      message: 'Vui lòng điền đầy đủ các thông tin bắt buộc (*)'
+    });
+  }
+
+  const cleanEmail = email.toLowerCase().trim();
+  const fullAddress = `${detailedAddress || ''}, ${district || ''}, ${city || ''}`.replace(/^,\s*|,\s*$/g, '');
+
+  // 1. PostgreSQL Registration
+  if (isDbConnected()) {
+    try {
+      const existing = await pool.query(
+        'SELECT user_id FROM users WHERE LOWER(email) = $1 OR phone = $2',
+        [cleanEmail, phone]
+      );
+
+      if (existing.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tài khoản với Email hoặc Số điện thoại này đã tồn tại!'
+        });
+      }
+
+      // Insert User with role OWNER
+      const userRes = await pool.query(
+        `INSERT INTO users (full_name, email, password_hash, phone, role, status)
+         VALUES ($1, $2, $3, $4, 'OWNER', 'ACTIVE') RETURNING *`,
+        [representativeName.trim(), cleanEmail, password, phone]
+      );
+      const newOwner = userRes.rows[0];
+
+      // Insert Owner Profile
+      await pool.query(
+        `INSERT INTO owner_profiles (owner_id, business_name)
+         VALUES ($1, $2)
+         ON CONFLICT (owner_id) DO NOTHING`,
+        [newOwner.user_id, facilityName.trim()]
+      );
+
+      // Insert pending Court (Waiting for Admin approval)
+      await pool.query(
+        `INSERT INTO courts (sport_type_id, owner_id, name, address, area, description, price_per_slot, operational_status, is_visible)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'INACTIVE', FALSE)`,
+        [1, newOwner.user_id, facilityName.trim(), fullAddress, city || 'TP. Hồ Chí Minh', description || (Array.isArray(sportTypes) ? sportTypes.join(', ') : ''), 300000]
+      );
+
+      return res.status(201).json({
+        success: true,
+        source: 'PostgreSQL Database',
+        message: 'Đăng ký hồ sơ Chủ sân thành công! Ban quản trị sẽ kiểm duyệt trong 2-4 giờ làm việc.',
+        data: {
+          id: newOwner.user_id,
+          fullName: newOwner.full_name,
+          email: newOwner.email,
+          phone: newOwner.phone,
+          role: 'OWNER',
+          facilityName,
+          token: `owner-jwt-token-${newOwner.user_id}`
+        }
+      });
+    } catch (err) {
+      console.warn('⚠️ Lỗi register-owner PostgreSQL:', err.message);
+    }
+  }
+
+  // 2. Fallback
+  const newOwnerFallback = {
+    id: Date.now(),
+    fullName: representativeName,
+    emailOrPhone: cleanEmail,
+    phone,
+    role: 'OWNER',
+    facilityName,
+    createdAt: new Date().toISOString()
+  };
+
+  fallbackUsers.push(newOwnerFallback);
+
+  res.status(201).json({
+    success: true,
+    source: 'Memory Fallback',
+    message: 'Đăng ký hồ sơ Chủ sân thành công! Ban quản trị sẽ kiểm duyệt trong 2-4 giờ làm việc.',
+    data: newOwnerFallback
+  });
+});
+
 module.exports = router;

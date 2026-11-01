@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function PartnerBanner({ onOpenPartnerModal }) {
+export default function PartnerBanner({ onOpenPartnerModal, onOpenAuth }) {
   return (
     <section className="container py-4 mb-5">
       <div className="partner-cta-box p-4 p-md-5">
@@ -26,7 +26,7 @@ export default function PartnerBanner({ onOpenPartnerModal }) {
               <button 
                 type="button" 
                 className="btn btn-light text-brand-dark fw-bold px-4 py-2 rounded-3 shadow-sm"
-                onClick={onOpenPartnerModal}
+                onClick={() => onOpenAuth ? onOpenAuth('register-owner') : onOpenPartnerModal()}
               >
                 Đăng ký chủ sân ngay
               </button>

@@ -176,7 +176,11 @@ export default function App() {
   const handleAuthSuccess = (userData) => {
     setCurrentUser(userData);
     localStorage.setItem('sportsbooking_user', JSON.stringify(userData));
-    showNotification(`Xin chào ${userData.fullName || 'bạn'}! Đăng nhập thành công.`);
+    if (userData.role === 'OWNER') {
+      showNotification(`🎉 Chào mừng Đối tác Chủ sân ${userData.fullName}! Hồ sơ cụm sân đã gửi thành công và đang chờ duyệt.`);
+    } else {
+      showNotification(`Xin chào ${userData.fullName || 'bạn'}! Đăng nhập thành công.`);
+    }
     setCurrentView('home');
   };
 
@@ -187,10 +191,10 @@ export default function App() {
   };
 
   // If in Login or Register Page mode
-  if (currentView === 'login' || currentView === 'register') {
+  if (['login', 'register', 'role-select', 'register-owner', 'register-user'].includes(currentView)) {
     return (
       <AuthPage
-        initialMode={currentView}
+        initialMode={currentView === 'register' ? 'role-select' : currentView}
         onBackToHome={() => setCurrentView('home')}
         onAuthSuccess={handleAuthSuccess}
       />
@@ -312,6 +316,7 @@ export default function App() {
         {/* Partner Section Banner */}
         <PartnerBanner 
           onOpenPartnerModal={() => setShowPartnerModal(true)}
+          onOpenAuth={(mode) => setCurrentView(mode)}
         />
       </main>
 
