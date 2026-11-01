@@ -1,0 +1,15 @@
+{
+  "name": "sportsbooking-project",
+  "version": "1.0.0",
+  "description": "Nền tảng đặt sân thể thao SportsBooking (ReactJS + Bootstrap + Node.js Express)",
+  "scripts": {
+    "server": "cd server && npm start",
+    "server:dev": "cd server && npm run dev",
+    "frontend": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build"
+  },
+  "keywords": ["sportsbooking", "react", "express", "bootstrap"],
+  "author": "",
+  "license": "ISC"
+}
+
