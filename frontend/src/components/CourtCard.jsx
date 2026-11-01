@@ -4,7 +4,7 @@ export default function CourtCard({ court, onBookNow }) {
   return (
     <div className="col-lg-4 col-md-6 mb-4">
       <div className="card h-100 court-card">
-        {/* Card Image with Badges */}
+        {/* Card Image / Preview with Badges */}
         <div className="court-card-img-wrapper position-relative">
           <img 
             src={court.imageUrl} 
@@ -12,17 +12,31 @@ export default function CourtCard({ court, onBookNow }) {
             className="court-card-img"
             loading="lazy"
           />
+
+          {/* Inner Mockup Frame as shown in screenshot */}
+          <div 
+            className="position-absolute bottom-0 start-0 end-0 m-2 p-2 rounded-3 bg-white bg-opacity-95 shadow-sm d-flex align-items-center justify-content-between"
+            style={{ backdropFilter: 'blur(4px)', fontSize: '0.72rem' }}
+          >
+            <div className="d-flex align-items-center gap-1">
+              <span className="badge bg-success py-1 px-1" style={{ fontSize: '0.62rem' }}>Sân trống</span>
+              <span className="fw-semibold text-dark text-truncate" style={{ maxWidth: '140px' }}>{court.name}</span>
+            </div>
+            <span className="text-success fw-bold">{court.openTime || 'Mở cả ngày'}</span>
+          </div>
+
           {/* Category Tag */}
           <div className="position-absolute top-0 start-0 m-3">
             <span className="badge-sport text-uppercase shadow-sm">
               {court.category}
             </span>
           </div>
+
           {/* Rating Tag */}
           <div className="position-absolute top-0 end-0 m-3">
             <div className="badge bg-white text-dark shadow-sm d-flex align-items-center gap-1 py-1 px-2 fw-semibold">
               <i className="bi bi-star-fill text-warning"></i>
-              <span>{court.rating.toFixed(1)}</span>
+              <span>{court.ratingFormatted || court.rating}</span>
               <span className="text-muted small">({court.reviewCount})</span>
             </div>
           </div>
@@ -50,7 +64,7 @@ export default function CourtCard({ court, onBookNow }) {
             ))}
           </div>
 
-          {/* Pricing and Action Button */}
+          {/* Pricing and Action Button ("Xem sân >" as in screenshot) */}
           <div className="d-flex align-items-center justify-content-between mt-auto pt-3 border-top">
             <div>
               <span className="d-block text-muted" style={{ fontSize: '0.75rem' }}>Giá thuê chỉ từ</span>
@@ -62,11 +76,16 @@ export default function CourtCard({ court, onBookNow }) {
               </div>
             </div>
 
+            {/* Changed from 'Đặt ngay' to 'Xem sân' with chevron > */}
             <button 
-              className="btn btn-brand px-3 py-2 fw-semibold"
+              className="btn btn-xem-san"
               onClick={() => onBookNow(court)}
+              title="Xem chi tiết sân và đặt lịch"
             >
-              Đặt ngay
+              <span>Xem sân</span>
+              <span className="xem-san-icon">
+                <i className="bi bi-chevron-right"></i>
+              </span>
             </button>
           </div>
         </div>
@@ -74,4 +93,3 @@ export default function CourtCard({ court, onBookNow }) {
     </div>
   );
 }
-

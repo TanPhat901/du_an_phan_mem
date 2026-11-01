@@ -57,6 +57,49 @@ body {
   box-shadow: 0 4px 12px rgba(11, 77, 60, 0.2);
 }
 
+/* Button Xem San as shown in screenshot */
+.btn-xem-san {
+  background-color: #f0fdf4;
+  color: #0b4d3c;
+  border: 1px solid #bbf7d0;
+  font-weight: 600;
+  font-size: 0.88rem;
+  padding: 0.38rem 0.85rem;
+  border-radius: 50rem;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.btn-xem-san:hover {
+  background-color: #0b4d3c;
+  color: #ffffff;
+  border-color: #0b4d3c;
+  transform: translateX(2px);
+  box-shadow: 0 4px 12px rgba(11, 77, 60, 0.15);
+}
+
+.xem-san-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #dcfce7;
+  color: #15803d;
+  font-size: 0.72rem;
+  font-weight: bold;
+  transition: all 0.2s ease;
+}
+
+.btn-xem-san:hover .xem-san-icon {
+  background-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
 .btn-brand-outline {
   background-color: transparent;
   color: var(--primary-green);
@@ -239,4 +282,198 @@ body {
 .footer-dark a:hover {
   color: #a7f3d0;
 }
+
+/* ===================================================
+   AUTHENTICATION PAGES (LOGIN & REGISTER) STYLES
+   =================================================== */
+.auth-page-wrapper {
+  background-color: #f8fafc;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-container-card {
+  background: #ffffff;
+  border-radius: 24px;
+  border: 1px solid #eef2f6;
+  box-shadow: 0 20px 45px -10px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+
+/* Left Hero Visual Card */
+.auth-visual-hero {
+  position: relative;
+  min-height: 620px;
+  border-radius: 20px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1.75rem;
+  color: #ffffff;
+  background-size: cover;
+  background-position: center;
+}
+
+.auth-visual-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(11, 77, 60, 0.45) 0%, rgba(15, 23, 42, 0.8) 100%);
+  z-index: 1;
+}
+
+.auth-visual-content {
+  position: relative;
+  z-index: 2;
+}
+
+.glass-pill {
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 0.35rem 0.75rem;
+  border-radius: 50rem;
+}
+
+.glass-card-testimonial {
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  padding: 1.25rem;
+  color: #ffffff;
+}
+
+.glass-stat-box {
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
+}
+
+/* Social Buttons */
+.social-login-btn {
+  background-color: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  color: #334155;
+  font-weight: 600;
+  font-size: 0.88rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.social-login-btn:hover {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+/* Custom Auth Inputs */
+.auth-input-group {
+  position: relative;
+}
+
+.auth-input-group .form-control {
+  padding-left: 2.75rem;
+  padding-right: 2.75rem;
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+  border-radius: 10px;
+  border: 1.5px solid #e2e8f0;
+  font-size: 0.92rem;
+  transition: all 0.2s ease;
+}
+
+.auth-input-group .form-control:focus {
+  border-color: var(--secondary-green);
+  box-shadow: 0 0 0 3px rgba(17, 120, 92, 0.15);
+}
+
+.auth-input-icon {
+  position: absolute;
+  left: 0.95rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  font-size: 1.1rem;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.auth-input-toggle {
+  position: absolute;
+  right: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  z-index: 5;
+}
+
+.auth-input-toggle:hover {
+  color: #475569;
+}
+
+/* Divider with text */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 1.25rem 0;
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.auth-divider:not(:empty)::before {
+  margin-right: 0.85em;
+}
+
+.auth-divider:not(:empty)::after {
+  margin-left: 0.85em;
+}
+
+/* Password strength bar */
+.strength-bar-wrapper {
+  display: flex;
+  gap: 4px;
+  height: 4px;
+  margin-top: 6px;
+}
+
+.strength-segment {
+  flex: 1;
+  height: 100%;
+  border-radius: 2px;
+  background-color: #e2e8f0;
+  transition: background-color 0.3s ease;
+}
+
 

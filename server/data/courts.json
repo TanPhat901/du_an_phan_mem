@@ -5,6 +5,7 @@
     "category": "PADEL & PICKLEBALL",
     "sportType": "pickleball",
     "rating": 4.9,
+    "ratingFormatted": "4.9",
     "reviewCount": 128,
     "address": "Nguyễn Văn Hưởng, Phường Thảo Điền, TP. Thủ Đức",
     "city": "TP. Hồ Chí Minh",
@@ -12,7 +13,7 @@
     "pricePerHour": 280000,
     "priceFormatted": "280.000đ",
     "imageUrl": "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&q=80",
-    "amenities": ["Bãi đỗ ô tô", "Phòng tắm nóng lạnh", "Café / Giải khát"],
+    "amenities": ["Bãi đỗ ô tô", "Phòng tắm nóng lạnh", "Café / Quầy nước"],
     "openTime": "06:00 - 23:00",
     "featured": true,
     "availableSlots": ["06:00 - 07:00", "07:00 - 08:00", "17:00 - 18:00", "18:00 - 19:00", "19:00 - 20:00", "20:00 - 21:00"]
@@ -23,14 +24,15 @@
     "category": "BÓNG ĐÁ & TENNIS",
     "sportType": "football",
     "rating": 4.8,
-    "reviewCount": 95,
+    "ratingFormatted": "4.8",
+    "reviewCount": 94,
     "address": "Đường N1, Sơn Kỳ, Tân Phú, TP. Hồ Chí Minh",
     "city": "TP. Hồ Chí Minh",
     "district": "Quận Tân Phú",
     "pricePerHour": 190000,
     "priceFormatted": "190.000đ",
     "imageUrl": "https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80",
-    "amenities": ["Sân cỏ nhân tạo", "Khán đài có mái", "Sân mở 24/7"],
+    "amenities": ["Đèn Led ban đêm", "Khán đài có mái", "Bảo vệ 24/7"],
     "openTime": "24/7",
     "featured": true,
     "availableSlots": ["07:00 - 08:30", "16:00 - 17:30", "18:00 - 19:30", "19:30 - 21:00", "21:00 - 22:30"]
@@ -40,7 +42,8 @@
     "name": "Sky Garden Arena Phú Mỹ Hưng",
     "category": "CẦU LÔNG TRONG NHÀ",
     "sportType": "badminton",
-    "rating": 5.0,
+    "rating": 4.95,
+    "ratingFormatted": "4.95",
     "reviewCount": 210,
     "address": "Phạm Văn Nghị, Tân Phong, Quận 7, TP. HCM",
     "city": "TP. Hồ Chí Minh",
@@ -48,7 +51,7 @@
     "pricePerHour": 140000,
     "priceFormatted": "140.000đ",
     "imageUrl": "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=800&q=80",
-    "amenities": ["Máy lạnh công suất lớn", "Thảm Taraflex chuẩn thi đấu"],
+    "amenities": ["Máy lạnh công suất lớn", "Thảm Yonex chuẩn thi đấu"],
     "openTime": "05:30 - 22:30",
     "featured": true,
     "availableSlots": ["06:00 - 07:00", "08:00 - 09:00", "16:00 - 17:00", "17:00 - 18:00", "19:00 - 20:00"]
@@ -59,6 +62,7 @@
     "category": "PADEL & PICKLEBALL",
     "sportType": "pickleball",
     "rating": 4.7,
+    "ratingFormatted": "4.7",
     "reviewCount": 84,
     "address": "2 Hồ Xuân Hương, Phường 6, Quận 3, TP. Hồ Chí Minh",
     "city": "TP. Hồ Chí Minh",
@@ -77,6 +81,7 @@
     "category": "BÓNG ĐÁ & TENNIS",
     "sportType": "football",
     "rating": 4.9,
+    "ratingFormatted": "4.9",
     "reviewCount": 312,
     "address": "30 Phan Thúc Duyện, Phường 4, Tân Bình, TP. Hồ Chí Minh",
     "city": "TP. Hồ Chí Minh",
@@ -95,6 +100,7 @@
     "category": "CẦU LÔNG TRONG NHÀ",
     "sportType": "badminton",
     "rating": 4.8,
+    "ratingFormatted": "4.8",
     "reviewCount": 140,
     "address": "Đường Lê Hồng Phong, Hà Cầu, Hà Đông, Hà Nội",
     "city": "Hà Nội",
@@ -108,4 +114,3 @@
     "availableSlots": ["07:00 - 08:00", "18:00 - 19:00", "19:00 - 20:00"]
   }
 ]
-

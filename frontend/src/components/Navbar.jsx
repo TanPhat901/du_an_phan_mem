@@ -1,11 +1,11 @@
 import React from 'react';
 
-export default function Navbar({ onOpenAuth, onOpenMyBookings, activeTab, setActiveTab }) {
+export default function Navbar({ onOpenAuth, onOpenMyBookings, activeTab, setActiveTab, currentUser, onLogout }) {
   return (
     <nav className="navbar navbar-expand-lg bg-white border-bottom sticky-top py-3">
       <div className="container">
         {/* Brand Logo */}
-        <a className="navbar-brand d-flex align-items-center gap-2" href="#">
+        <a className="navbar-brand d-flex align-items-center gap-2" href="#" onClick={(e) => { e.preventDefault(); setActiveTab('home'); }}>
           <div className="d-flex align-items-center justify-content-center bg-brand-light rounded-circle" style={{ width: '38px', height: '38px' }}>
             <i className="bi bi-trophy-fill text-brand fs-5"></i>
           </div>
@@ -76,25 +76,48 @@ export default function Navbar({ onOpenAuth, onOpenMyBookings, activeTab, setAct
             </li>
           </ul>
 
-          {/* User Auth Buttons */}
+          {/* User Auth Buttons / Profile */}
           <div className="d-flex align-items-center gap-3">
-            <button 
-              className="btn btn-link text-decoration-none text-dark fw-semibold d-flex align-items-center gap-2 p-0"
-              onClick={() => onOpenAuth('login')}
-            >
-              <i className="bi bi-person fs-5"></i>
-              <span>Đăng nhập</span>
-            </button>
-            <button 
-              className="btn btn-brand"
-              onClick={() => onOpenAuth('register')}
-            >
-              Đăng ký
-            </button>
+            {currentUser ? (
+              <div className="d-flex align-items-center gap-2">
+                <div 
+                  className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold shadow-sm"
+                  style={{ width: '36px', height: '36px', backgroundColor: '#0b4d3c' }}
+                >
+                  {currentUser.fullName ? currentUser.fullName.charAt(0).toUpperCase() : 'U'}
+                </div>
+                <div className="d-none d-sm-block text-start">
+                  <div className="small fw-bold text-dark">{currentUser.fullName}</div>
+                  <button 
+                    type="button" 
+                    className="btn btn-link p-0 text-muted small text-decoration-none"
+                    style={{ fontSize: '0.75rem' }}
+                    onClick={onLogout}
+                  >
+                    Đăng xuất
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <button 
+                  className="btn btn-link text-decoration-none text-dark fw-semibold d-flex align-items-center gap-2 p-0"
+                  onClick={() => onOpenAuth('login')}
+                >
+                  <i className="bi bi-person fs-5"></i>
+                  <span>Đăng nhập</span>
+                </button>
+                <button 
+                  className="btn btn-brand"
+                  onClick={() => onOpenAuth('register')}
+                >
+                  Đăng ký
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
     </nav>
   );
 }
-

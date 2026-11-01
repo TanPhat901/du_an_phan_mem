@@ -8,7 +8,7 @@ import Footer from './components/Footer';
 import BookingModal from './components/BookingModal';
 import PartnerModal from './components/PartnerModal';
 import MyBookingsModal from './components/MyBookingsModal';
-import AuthModal from './components/AuthModal';
+import AuthPage from './components/AuthPage';
 
 // Initial fallback courts identical to backend JSON & screenshot
 const INITIAL_COURTS = [
@@ -18,13 +18,14 @@ const INITIAL_COURTS = [
     category: "PADEL & PICKLEBALL",
     sportType: "pickleball",
     rating: 4.9,
+    ratingFormatted: "4.9",
     reviewCount: 128,
     address: "Nguyễn Văn Hưởng, Phường Thảo Điền, TP. Thủ Đức",
     city: "TP. Hồ Chí Minh",
     pricePerHour: 280000,
     priceFormatted: "280.000đ",
     imageUrl: "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&q=80",
-    amenities: ["Bãi đỗ ô tô", "Phòng tắm nóng lạnh", "Café / Giải khát"],
+    amenities: ["Bãi đỗ ô tô", "Phòng tắm nóng lạnh", "Café / Quầy nước"],
     featured: true,
     availableSlots: ["06:00 - 07:00", "07:00 - 08:00", "17:00 - 18:00", "18:00 - 19:00", "19:00 - 20:00", "20:00 - 21:00"]
   },
@@ -34,13 +35,14 @@ const INITIAL_COURTS = [
     category: "BÓNG ĐÁ & TENNIS",
     sportType: "football",
     rating: 4.8,
-    reviewCount: 95,
+    ratingFormatted: "4.8",
+    reviewCount: 94,
     address: "Đường N1, Sơn Kỳ, Tân Phú, TP. Hồ Chí Minh",
     city: "TP. Hồ Chí Minh",
     pricePerHour: 190000,
     priceFormatted: "190.000đ",
     imageUrl: "https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80",
-    amenities: ["Sân cỏ nhân tạo", "Khán đài có mái", "Sân mở 24/7"],
+    amenities: ["Đèn Led ban đêm", "Khán đài có mái", "Bảo vệ 24/7"],
     featured: true,
     availableSlots: ["07:00 - 08:30", "16:00 - 17:30", "18:00 - 19:30", "19:30 - 21:00", "21:00 - 22:30"]
   },
@@ -49,20 +51,27 @@ const INITIAL_COURTS = [
     name: "Sky Garden Arena Phú Mỹ Hưng",
     category: "CẦU LÔNG TRONG NHÀ",
     sportType: "badminton",
-    rating: 5.0,
+    rating: 4.95,
+    ratingFormatted: "4.95",
     reviewCount: 210,
     address: "Phạm Văn Nghị, Tân Phong, Quận 7, TP. HCM",
     city: "TP. Hồ Chí Minh",
     pricePerHour: 140000,
     priceFormatted: "140.000đ",
     imageUrl: "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=800&q=80",
-    amenities: ["Máy lạnh công suất lớn", "Thảm Taraflex chuẩn thi đấu"],
+    amenities: ["Máy lạnh công suất lớn", "Thảm Yonex chuẩn thi đấu"],
     featured: true,
     availableSlots: ["06:00 - 07:00", "08:00 - 09:00", "16:00 - 17:00", "17:00 - 18:00", "19:00 - 20:00"]
   }
 ];
 
 export default function App() {
+  const [currentView, setCurrentView] = useState('home'); // 'home' | 'login' | 'register'
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('sportsbooking_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
   const [courts, setCourts] = useState(INITIAL_COURTS);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
@@ -79,7 +88,6 @@ export default function App() {
   const [selectedCourtForBooking, setSelectedCourtForBooking] = useState(null);
   const [showPartnerModal, setShowPartnerModal] = useState(false);
   const [showMyBookings, setShowMyBookings] = useState(false);
-  const [authMode, setAuthMode] = useState(null); // 'login' | 'register' | null
   const [toastMessage, setToastMessage] = useState('');
 
   // Bookings state
@@ -139,8 +147,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchCourts();
-  }, [selectedCategory, selectedCity]);
+    if (currentView === 'home') {
+      fetchCourts();
+    }
+  }, [selectedCategory, selectedCity, currentView]);
 
   const handleTabChange = (tab) => {
     setActiveSearchTab(tab);
@@ -160,6 +170,30 @@ export default function App() {
     setBookings(prev => [newBooking, ...prev]);
     showNotification(`🎉 Đặt sân thành công! Mã đặt chỗ của bạn là: ${newBooking.id}`);
   };
+
+  const handleAuthSuccess = (userData) => {
+    setCurrentUser(userData);
+    localStorage.setItem('sportsbooking_user', JSON.stringify(userData));
+    showNotification(`Xin chào ${userData.fullName || 'bạn'}! Đăng nhập thành công.`);
+    setCurrentView('home');
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('sportsbooking_user');
+    showNotification('Đã đăng xuất khỏi tài khoản.');
+  };
+
+  // If in Login or Register Page mode
+  if (currentView === 'login' || currentView === 'register') {
+    return (
+      <AuthPage
+        initialMode={currentView}
+        onBackToHome={() => setCurrentView('home')}
+        onAuthSuccess={handleAuthSuccess}
+      />
+    );
+  }
 
   return (
     <div className="min-vh-100 d-flex flex-column bg-white">
@@ -185,10 +219,12 @@ export default function App() {
 
       {/* Header / Navbar */}
       <Navbar 
-        onOpenAuth={(mode) => setAuthMode(mode)}
+        onOpenAuth={(mode) => setCurrentView(mode)}
         onOpenMyBookings={() => setShowMyBookings(true)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        currentUser={currentUser}
+        onLogout={handleLogout}
       />
 
       <main className="flex-grow-1">
@@ -226,7 +262,7 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <Footer onOpenAuth={(mode) => setAuthMode(mode)} />
+      <Footer onOpenAuth={(mode) => setCurrentView(mode)} />
 
       {/* Modals */}
       {selectedCourtForBooking && (
@@ -253,17 +289,6 @@ export default function App() {
           }}
         />
       )}
-
-      {authMode && (
-        <AuthModal 
-          initialMode={authMode}
-          onClose={() => setAuthMode(null)}
-          onAuthSuccess={(user) => {
-            showNotification(`Xin chào ${user.name}! Bạn đã đăng nhập thành công.`);
-          }}
-        />
-      )}
     </div>
   );
 }
-
