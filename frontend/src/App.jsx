@@ -70,10 +70,32 @@ const INITIAL_COURTS = [
 
 export default function App() {
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'login' | 'register' | 'profile'
-  const [currentUser, setCurrentUser] = useState(() => {
-    const saved = localStorage.getItem('sportsbooking_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const token = localStorage.getItem('sportsbooking_token') || sessionStorage.getItem('sportsbooking_token');
+    if (!token) {
+      localStorage.removeItem('sportsbooking_user');
+      setAuthReady(true);
+      return;
+    }
+    fetch('http://localhost:5000/api/auth/me', {
+      headers: { Authorization: `Bearer ${token}` }
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.data) throw new Error('Invalid session');
+      if (!cancelled) setCurrentUser(data.data);
+    }).catch(() => {
+      // Không coi thông tin lưu trên trình duyệt là phiên đăng nhập hợp lệ.
+      if (!cancelled) {
+        setCurrentUser(null);
+        localStorage.removeItem('sportsbooking_user');
+      }
+    }).finally(() => { if (!cancelled) setAuthReady(true); });
+    return () => { cancelled = true; };
+  }, []);
 
   const [courts, setCourts] = useState(INITIAL_COURTS);
   const [loading, setLoading] = useState(false);
@@ -175,9 +197,17 @@ export default function App() {
     showNotification(`🎉 Đặt sân thành công! Mã đặt chỗ của bạn là: ${newBooking.id}`);
   };
 
-  const handleAuthSuccess = (userData) => {
-    setCurrentUser(userData);
-    localStorage.setItem('sportsbooking_user', JSON.stringify(userData));
+  const handleAuthSuccess = (userData, remember = true) => {
+    if (!userData?.token) {
+      showNotification('Không thể xác thực tài khoản. Vui lòng đăng nhập lại.');
+      return;
+    }
+    localStorage.removeItem('sportsbooking_token');
+    sessionStorage.removeItem('sportsbooking_token');
+    (remember ? localStorage : sessionStorage).setItem('sportsbooking_token', userData.token);
+    const { token, ...user } = userData;
+    setCurrentUser(user);
+    localStorage.setItem('sportsbooking_user', JSON.stringify(user));
     if (userData.role === 'OWNER') {
       showNotification(`🎉 Chào mừng Đối tác Chủ sân ${userData.fullName}! Chuyển đến Giao diện Quản lý Chủ Sân.`);
       setCurrentView('owner-dashboard');
@@ -191,10 +221,22 @@ export default function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('sportsbooking_user');
+    localStorage.removeItem('sportsbooking_token');
+    sessionStorage.removeItem('sportsbooking_token');
     showNotification('Đã đăng xuất khỏi tài khoản.');
   };
 
-  // Personal profile page (UI phase only)
+  const handleProfileUpdated = (user) => {
+    setCurrentUser(prev => ({ ...prev, ...user }));
+    localStorage.setItem('sportsbooking_user', JSON.stringify({ ...currentUser, ...user }));
+  };
+
+  if (!authReady) return <div className="container py-5">Đang xác minh phiên đăng nhập...</div>;
+
+  // Personal profile page
+  if (currentView === 'profile' && !currentUser) {
+    return <AuthPage initialMode="login" onBackToHome={() => setCurrentView('home')} onAuthSuccess={handleAuthSuccess} />;
+  }
   if (currentView === 'profile') {
     return (
       <div className="min-vh-100 d-flex flex-column bg-white">
@@ -211,6 +253,7 @@ export default function App() {
         />
         <ProfilePage
           currentUser={currentUser}
+          onProfileUpdated={handleProfileUpdated}
           onBackToHome={() => setCurrentView('home')}
           onOpenMyBookings={() => setShowMyBookings(true)}
           onLogout={() => { handleLogout(); setCurrentView('home'); }}

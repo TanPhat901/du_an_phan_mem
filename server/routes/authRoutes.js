@@ -1,42 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const authMiddleware = require('../middleware/authMiddleware');
 const { pool, isDbConnected } = require('../config/db');
 const { sendOtpEmail } = require('../services/emailService');
 
-// In-memory store for fallback users
-let fallbackUsers = [
-  {
-    id: 1,
-    fullName: 'Quản Trị Viên',
-    emailOrPhone: 'admin@sportsbooking.vn',
-    password: 'admin123',
-    role: 'ADMIN',
-    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 2,
-    fullName: 'Nguyễn Văn Thảo',
-    emailOrPhone: 'theyard@sportsbooking.vn',
-    phone: '0901234567',
-    password: 'owner123',
-    role: 'OWNER',
-    facilityName: 'The Yard Padel Club Thảo Điền',
-    avatar: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=150&q=80',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 5,
-    fullName: 'Nguyễn Văn An',
-    emailOrPhone: 'an.nguyen@example.com',
-    phone: '0912345678',
-    password: 'password123',
-    role: 'USER',
-    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-    createdAt: new Date().toISOString()
-  }
-];
+// JWT chỉ được phát hành cho tài khoản tồn tại trong PostgreSQL.
+function signToken(user) {
+  if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET chưa được cấu hình');
+  return jwt.sign(
+    { userId: user.user_id, role: user.role },
+    process.env.JWT_SECRET,
+    { algorithm: 'HS256', expiresIn: process.env.JWT_EXPIRES_IN || '2h' }
+  );
+}
+
+function databaseUnavailable(res) {
+  return res.status(503).json({ success: false, message: 'Không thể kết nối cơ sở dữ liệu. Vui lòng thử lại sau.' });
+}
 
 // In-memory OTP storage: Map<emailOrPhone, { otp: string, expiresAt: number, verified: boolean }>
 const otpStore = new Map();
@@ -222,8 +205,9 @@ router.post('/register', async (req, res) => {
   const email = isEmail ? cleanInput : `${cleanInput}@user.sportsbooking.vn`;
   const phone = isEmail ? null : cleanInput;
 
-  // 2. Kiểm tra & Lưu vào PostgreSQL
-  if (isDbConnected()) {
+  // 2. Chỉ lưu tài khoản thật trong PostgreSQL
+  if (!isDbConnected()) return databaseUnavailable(res);
+  {
     try {
       const existing = await pool.query(
         'SELECT user_id FROM users WHERE LOWER(email) = $1 OR phone = $2',
@@ -237,10 +221,11 @@ router.post('/register', async (req, res) => {
         });
       }
 
+      const hashedPassword = await bcrypt.hash(password, 12);
       const result = await pool.query(
         `INSERT INTO users (full_name, email, password_hash, phone, role, status)
          VALUES ($1, $2, $3, $4, 'USER', 'ACTIVE') RETURNING *`,
-        [fullName.trim(), email, password, phone]
+        [fullName.trim(), email, hashedPassword, phone]
       );
 
       const newUser = result.rows[0];
@@ -255,53 +240,15 @@ router.post('/register', async (req, res) => {
           phone: newUser.phone,
           role: newUser.role,
           avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-          token: `jwt-token-${newUser.user_id}`
+          token: signToken(newUser)
         }
       });
     } catch (err) {
-      console.warn('⚠️ Lỗi register PostgreSQL:', err.message);
+      console.error('Lỗi register PostgreSQL:', err);
+      return res.status(500).json({ success: false, message: 'Không thể đăng ký tài khoản.' });
     }
   }
 
-  // 3. Fallback bộ nhớ nếu PostgreSQL chưa kết nối
-  const existingFallback = fallbackUsers.find(
-    u => u.emailOrPhone.toLowerCase() === cleanInput || (u.phone && u.phone === cleanInput)
-  );
-
-  if (existingFallback) {
-    return res.status(400).json({
-      success: false,
-      message: 'Tài khoản với Email hoặc Số điện thoại này đã tồn tại!'
-    });
-  }
-
-  const newUser = {
-    id: Date.now(),
-    fullName: fullName.trim(),
-    emailOrPhone: cleanInput,
-    phone: isEmail ? null : cleanInput,
-    password,
-    role: 'USER',
-    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-    createdAt: new Date().toISOString()
-  };
-
-  fallbackUsers.push(newUser);
-
-  res.status(201).json({
-    success: true,
-    source: 'Local Memory Fallback',
-    message: 'Đăng ký tài khoản Người chơi thành công!',
-    data: {
-      id: newUser.id,
-      fullName: newUser.fullName,
-      emailOrPhone: newUser.emailOrPhone,
-      phone: newUser.phone,
-      role: newUser.role,
-      avatar: newUser.avatar,
-      token: `mock-jwt-token-${newUser.id}`
-    }
-  });
 });
 
 // ==========================================
@@ -364,8 +311,9 @@ router.post('/register-owner', async (req, res) => {
   const cleanPhone = (phone || '').trim();
   const fullAddress = `${detailedAddress || ''}, ${district || ''}, ${city || ''}`.replace(/^,\s*|,\s*$/g, '');
 
-  // 2. Lưu vào PostgreSQL
-  if (isDbConnected()) {
+  // 2. Chỉ lưu vào PostgreSQL
+  if (!isDbConnected()) return databaseUnavailable(res);
+  {
     try {
       const existing = await pool.query(
         'SELECT user_id FROM users WHERE LOWER(email) = $1 OR phone = $2',
@@ -379,11 +327,12 @@ router.post('/register-owner', async (req, res) => {
         });
       }
 
+      const hashedPassword = await bcrypt.hash(password, 12);
       // Tạo user với role OWNER
       const userRes = await pool.query(
         `INSERT INTO users (full_name, email, password_hash, phone, role, status)
          VALUES ($1, $2, $3, $4, 'OWNER', 'ACTIVE') RETURNING *`,
-        [representativeName.trim(), cleanEmail, password, cleanPhone]
+        [representativeName.trim(), cleanEmail, hashedPassword, cleanPhone]
       );
       const newOwner = userRes.rows[0];
 
@@ -413,57 +362,15 @@ router.post('/register-owner', async (req, res) => {
           phone: newOwner.phone,
           role: 'OWNER',
           facilityName,
-          token: `owner-jwt-token-${newOwner.user_id}`
+          token: signToken(newOwner)
         }
       });
     } catch (err) {
-      console.warn('⚠️ Lỗi register-owner PostgreSQL:', err.message);
+      console.error('Lỗi register-owner PostgreSQL:', err);
+      return res.status(500).json({ success: false, message: 'Không thể đăng ký chủ sân.' });
     }
   }
 
-  // 3. Fallback bộ nhớ nếu PostgreSQL chưa chạy
-  const existingOwner = fallbackUsers.find(
-    u => u.emailOrPhone.toLowerCase() === cleanEmail || (cleanPhone && u.phone === cleanPhone)
-  );
-
-  if (existingOwner) {
-    return res.status(400).json({
-      success: false,
-      message: 'Tài khoản với Email hoặc Số điện thoại này đã tồn tại!'
-    });
-  }
-
-  const newOwnerFallback = {
-    id: Date.now(),
-    fullName: representativeName.trim(),
-    emailOrPhone: cleanEmail,
-    phone: cleanPhone,
-    password,
-    role: 'OWNER',
-    facilityName: facilityName.trim(),
-    address: fullAddress,
-    sportTypes: sportTypes || ['Bóng đá', 'Pickleball'],
-    avatar: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=150&q=80',
-    createdAt: new Date().toISOString()
-  };
-
-  fallbackUsers.push(newOwnerFallback);
-
-  res.status(201).json({
-    success: true,
-    source: 'Local Memory Fallback',
-    message: 'Đăng ký hồ sơ Chủ sân thành công! Ban quản trị sẽ kiểm duyệt trong 2 - 4 giờ làm việc.',
-    data: {
-      id: newOwnerFallback.id,
-      fullName: newOwnerFallback.fullName,
-      emailOrPhone: newOwnerFallback.emailOrPhone,
-      phone: newOwnerFallback.phone,
-      role: 'OWNER',
-      facilityName: newOwnerFallback.facilityName,
-      avatar: newOwnerFallback.avatar,
-      token: `mock-jwt-token-${newOwnerFallback.id}`
-    }
-  });
 });
 
 // ==========================================
@@ -471,124 +378,70 @@ router.post('/register-owner', async (req, res) => {
 // POST /api/auth/login
 // ==========================================
 router.post('/login', async (req, res) => {
-  const { emailOrPhone, password } = req.body;
-
-  if (!emailOrPhone || !password) {
-    return res.status(400).json({
-      success: false,
-      message: 'Vui lòng nhập Email / Số điện thoại và Mật khẩu!'
-    });
+  const { emailOrPhone, password } = req.body || {};
+  if (typeof emailOrPhone !== 'string' || !emailOrPhone.trim() || typeof password !== 'string' || !password) {
+    return res.status(400).json({ success: false, message: 'Vui lòng nhập Email / Số điện thoại và Mật khẩu!' });
   }
+  if (!isDbConnected()) return databaseUnavailable(res);
+  try {
+    const result = await pool.query(
+      `SELECT u.user_id, u.full_name, u.email, u.phone, u.password_hash, u.role, u.status, op.business_name
+       FROM users u LEFT JOIN owner_profiles op ON u.user_id = op.owner_id
+       WHERE LOWER(u.email) = $1 OR u.phone = $1 LIMIT 1`,
+      [emailOrPhone.trim().toLowerCase()]
+    );
+    const user = result.rows[0];
+    if (!user) return res.status(401).json({ success: false, message: 'Tài khoản hoặc mật khẩu không chính xác.' });
 
-  const cleanInput = emailOrPhone.toLowerCase().trim();
+    const stored = user.password_hash || '';
+    const isBcrypt = /^\$2[aby]\$\d{2}\$/.test(stored);
+    const valid = isBcrypt ? await bcrypt.compare(password, stored) : stored === password;
+    if (!valid) return res.status(401).json({ success: false, message: 'Tài khoản hoặc mật khẩu không chính xác.' });
+    if (user.status !== 'ACTIVE') return res.status(403).json({ success: false, message: 'Tài khoản hiện không hoạt động.' });
 
-  // 1. Kiểm tra trong PostgreSQL Database
-  if (isDbConnected()) {
-    try {
-      const result = await pool.query(
-        `SELECT u.user_id, u.full_name, u.email, u.phone, u.role, u.status, op.business_name
-         FROM users u
-         LEFT JOIN owner_profiles op ON u.user_id = op.owner_id
-         WHERE (LOWER(u.email) = $1 OR u.phone = $1) AND u.password_hash = $2`,
-        [cleanInput, password]
-      );
-
-      if (result.rows.length > 0) {
-        const user = result.rows[0];
-
-        if (user.status === 'LOCKED') {
-          return res.status(403).json({
-            success: false,
-            message: 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Hotline 1900 8899.'
-          });
-        }
-
-        return res.json({
-          success: true,
-          source: 'PostgreSQL Database',
-          message: 'Đăng nhập thành công!',
-          data: {
-            id: user.user_id,
-            fullName: user.full_name,
-            email: user.email,
-            phone: user.phone,
-            role: user.role,
-            facilityName: user.business_name || null,
-            avatar: user.role === 'OWNER' 
-              ? 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=150&q=80'
-              : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-            token: `jwt-token-${user.user_id}`
-          }
-        });
-      }
-    } catch (err) {
-      console.warn('⚠️ Lỗi login PostgreSQL:', err.message);
+    // Chuyển mật khẩu cũ dạng rõ sang bcrypt sau lần đăng nhập hợp lệ đầu tiên.
+    if (!isBcrypt) {
+      const hashed = await bcrypt.hash(password, 12);
+      await pool.query('UPDATE users SET password_hash = $1 WHERE user_id = $2 AND password_hash = $3',
+        [hashed, user.user_id, stored]);
     }
-  }
 
-  // 2. Kiểm tra trong Fallback Users
-  const user = fallbackUsers.find(
-    u => (u.emailOrPhone.toLowerCase() === cleanInput || (u.phone && u.phone === cleanInput)) && u.password === password
-  );
-
-  if (user) {
     return res.json({
       success: true,
-      source: 'Local Memory Fallback',
+      source: 'PostgreSQL Database',
       message: 'Đăng nhập thành công!',
       data: {
-        id: user.id,
-        fullName: user.fullName,
-        emailOrPhone: user.emailOrPhone,
-        phone: user.phone,
-        role: user.role,
-        facilityName: user.facilityName || null,
-        avatar: user.avatar,
-        token: `mock-jwt-token-${user.id}`
+        id: user.user_id, fullName: user.full_name, email: user.email,
+        phone: user.phone, role: user.role, facilityName: user.business_name || null,
+        token: signToken(user)
       }
     });
+  } catch (err) {
+    console.error('Lỗi login PostgreSQL:', err);
+    return res.status(500).json({ success: false, message: 'Không thể đăng nhập lúc này.' });
   }
-
-  // 3. Chấp nhận tài khoản demo nếu mật khẩu >= 6 ký tự
-  if (password.length >= 6) {
-    const isOwner = cleanInput.includes('owner') || cleanInput.includes('theyard');
-    const demoUser = {
-      id: Date.now(),
-      fullName: cleanInput.includes('@') ? cleanInput.split('@')[0] : 'Người dùng SportsBooking',
-      emailOrPhone: cleanInput,
-      role: isOwner ? 'OWNER' : 'USER',
-      facilityName: isOwner ? 'CLB Thể Thao Mẫu' : null,
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-      token: `mock-jwt-token-demo`
-    };
-    return res.json({
-      success: true,
-      source: 'Demo Auth',
-      message: 'Đăng nhập thành công!',
-      data: demoUser
-    });
-  }
-
-  return res.status(401).json({
-    success: false,
-    message: 'Tài khoản hoặc mật khẩu không chính xác.'
-  });
 });
 
-// ==========================================
-// 6. API LẤY THÔNG TIN TÀI KHOẢN HIỆN TẠI
-// GET /api/auth/me
-// ==========================================
-router.get('/me', (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.status(401).json({ success: false, message: 'Chưa đăng nhập' });
+// GET /api/auth/me: chỉ trả về tài khoản được xác thực bằng JWT.
+router.get('/me', authMiddleware, async (req, res) => {
+  if (!isDbConnected()) return databaseUnavailable(res);
+  try {
+    const result = await pool.query(
+      `SELECT u.user_id, u.full_name, u.email, u.phone, u.role, u.status, op.business_name
+       FROM users u LEFT JOIN owner_profiles op ON u.user_id = op.owner_id
+       WHERE u.user_id = $1`, [req.user.userId]);
+    const user = result.rows[0];
+    if (!user || user.status !== 'ACTIVE') {
+      return res.status(401).json({ success: false, message: 'Tài khoản không còn hợp lệ.' });
+    }
+    return res.json({ success: true, data: {
+      id: user.user_id, fullName: user.full_name, email: user.email,
+      phone: user.phone, role: user.role, facilityName: user.business_name || null
+    }});
+  } catch (err) {
+    console.error('Lỗi /auth/me:', err);
+    return res.status(500).json({ success: false, message: 'Không thể tải thông tin tài khoản.' });
   }
-
-  res.json({
-    success: true,
-    data: fallbackUsers[0]
-  });
 });
 
 module.exports = router;

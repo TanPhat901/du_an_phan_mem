@@ -6,19 +6,57 @@ const getInitialForm = (user) => ({
   email: user?.email || '',
 });
 
-export default function ProfilePage({ currentUser, onBackToHome, onOpenMyBookings, onLogout }) {
+export default function ProfilePage({ currentUser, onProfileUpdated, onBackToHome, onOpenMyBookings, onLogout }) {
   const [form, setForm] = useState(() => getInitialForm(currentUser));
   const [notice, setNotice] = useState('');
-  useEffect(() => { setForm(getInitialForm(currentUser)); setNotice(''); }, [currentUser]);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const token = localStorage.getItem('sportsbooking_token') || sessionStorage.getItem('sportsbooking_token');
+    if (!token) { setError('Bạn cần đăng nhập để xem hồ sơ.'); return; }
+    setBusy(true);
+    fetch('http://localhost:5000/api/profile/me', {
+      headers: { Authorization: `Bearer ${token}` }
+    }).then(async res => {
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || 'Không thể tải hồ sơ.');
+      if (!cancelled) {
+        setForm(getInitialForm(data.data));
+        onProfileUpdated?.(data.data);
+        setError('');
+      }
+    }).catch(err => { if (!cancelled) setError(err.message); })
+      .finally(() => { if (!cancelled) setBusy(false); });
+    return () => { cancelled = true; };
+  }, []); // Chỉ tải lại khi mở trang Profile
+
 
   const change = (field) => (event) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
     setNotice('');
   };
-  const reset = () => { setForm(getInitialForm(currentUser)); setNotice(''); };
-  const submit = (event) => {
+  const reset = () => { setForm(getInitialForm(currentUser)); setNotice(''); setError(''); };
+  const submit = async (event) => {
     event.preventDefault();
-    setNotice('Giao diện đã hoàn thành. Chức năng lưu vào PostgreSQL sẽ được tích hợp ở giai đoạn backend.');
+    setNotice(''); setError('');
+    const token = localStorage.getItem('sportsbooking_token') || sessionStorage.getItem('sportsbooking_token');
+    if (!token) { setError('Phiên đăng nhập không tồn tại. Vui lòng đăng nhập lại.'); return; }
+    setBusy(true);
+    try {
+      const response = await fetch('http://localhost:5000/api/profile/me', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ fullName: form.fullName, phone: form.phone, email: form.email })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Không thể lưu hồ sơ.');
+      setForm(getInitialForm(data.data));
+      onProfileUpdated?.(data.data);
+      setNotice(data.message || 'Cập nhật hồ sơ thành công!');
+    } catch (err) {
+      setError(err.message || 'Không thể kết nối Backend.');
+    } finally { setBusy(false); }
   };
   const roleLabel = currentUser?.role === 'OWNER' ? 'Chủ sân' : currentUser?.role === 'ADMIN' ? 'Quản trị viên' : 'Khách hàng cá nhân';
   const initials = (currentUser?.fullName || 'U').trim().charAt(0).toUpperCase();
@@ -79,10 +117,11 @@ export default function ProfilePage({ currentUser, onBackToHome, onOpenMyBooking
                   <div className="profile-input-wrap"><i className="bi bi-envelope" /><input value={form.email} onChange={change('email')} type="email" placeholder="Nhập email" maxLength={254} /></div>
                   <small><i className="bi bi-info-circle me-1" />Dùng để nhận vé điện tử, mã QR check-in sân và thông báo xác nhận đặt sân.</small>
                 </label>
-                {notice && <div className="alert alert-info mt-3 mb-0" role="status">{notice}</div>}
+                {notice && <div className="alert alert-success mt-3 mb-0" role="status">{notice}</div>}
+                {error && <div className="alert alert-danger mt-3 mb-0" role="alert">{error}</div>}
                 <div className="profile-actions">
                   <button type="button" className="profile-cancel" onClick={reset}>Hủy bỏ</button>
-                  <button type="submit" className="profile-save"><i className="bi bi-floppy me-2" />Lưu cập nhật</button>
+                  <button type="submit" className="profile-save" disabled={busy}><i className="bi bi-floppy me-2" />{busy ? "Đang xử lý..." : "Lưu cập nhật"}</button>
                 </div>
               </form>
             </div>
