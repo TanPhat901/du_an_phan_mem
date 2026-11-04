@@ -10,6 +10,7 @@ import PartnerModal from './components/PartnerModal';
 import MyBookingsModal from './components/MyBookingsModal';
 import AuthPage from './components/AuthPage';
 import CourtDetailPage from './components/CourtDetailPage';
+import OwnerDashboard from './components/OwnerDashboard';
 
 // Initial fallback courts identical to backend JSON & screenshot
 const INITIAL_COURTS = [
@@ -177,7 +178,9 @@ export default function App() {
     setCurrentUser(userData);
     localStorage.setItem('sportsbooking_user', JSON.stringify(userData));
     if (userData.role === 'OWNER') {
-      showNotification(`🎉 Chào mừng Đối tác Chủ sân ${userData.fullName}! Hồ sơ cụm sân đã gửi thành công và đang chờ duyệt.`);
+      showNotification(`🎉 Chào mừng Đối tác Chủ sân ${userData.fullName}! Chuyển đến Giao diện Quản lý Chủ Sân.`);
+      setCurrentView('owner-dashboard');
+      return;
     } else {
       showNotification(`Xin chào ${userData.fullName || 'bạn'}! Đăng nhập thành công.`);
     }
@@ -198,6 +201,20 @@ export default function App() {
         initialRole={currentView === 'register-owner' ? 'OWNER' : 'USER'}
         onBackToHome={() => setCurrentView('home')}
         onAuthSuccess={handleAuthSuccess}
+      />
+    );
+  }
+
+  // If in Owner Dashboard mode
+  if (currentView === 'owner-dashboard') {
+    return (
+      <OwnerDashboard
+        currentUser={currentUser}
+        onBackToHome={() => {
+          setCurrentView('home');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onLogout={handleLogout}
       />
     );
   }
@@ -237,6 +254,7 @@ export default function App() {
           }}
           currentUser={currentUser}
           onOpenAuth={(mode) => setCurrentView(mode)}
+          onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
         />
 
         {selectedCourtForBooking && (
@@ -276,6 +294,7 @@ export default function App() {
       <Navbar 
         onOpenAuth={(mode) => setCurrentView(mode)}
         onOpenMyBookings={() => setShowMyBookings(true)}
+        onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         currentUser={currentUser}
@@ -318,11 +337,15 @@ export default function App() {
         <PartnerBanner 
           onOpenPartnerModal={() => setShowPartnerModal(true)}
           onOpenAuth={(mode) => setCurrentView(mode)}
+          onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
         />
       </main>
 
       {/* Footer */}
-      <Footer onOpenAuth={(mode) => setCurrentView(mode)} />
+      <Footer 
+        onOpenAuth={(mode) => setCurrentView(mode)} 
+        onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')} 
+      />
 
       {/* Modals */}
       {selectedCourtForBooking && (

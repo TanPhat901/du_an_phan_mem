@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function PartnerBanner({ onOpenPartnerModal, onOpenAuth }) {
+export default function PartnerBanner({ onOpenPartnerModal, onOpenAuth, onOpenOwnerDashboard }) {
   return (
     <section className="container py-4 mb-5">
       <div className="partner-cta-box p-4 p-md-5">
@@ -30,17 +30,15 @@ export default function PartnerBanner({ onOpenPartnerModal, onOpenAuth }) {
               >
                 Đăng ký chủ sân ngay
               </button>
-              <a 
-                href="#partner-info" 
-                className="text-white text-decoration-none fw-semibold d-inline-flex align-items-center gap-2"
-                onClick={(e) => {
-                  e.preventDefault();
-                  alert('Hệ thống quản lý sân SportsBooking Pro: Đồng bộ lịch tự động, thanh toán quét mã QR, báo cáo doanh thu thông minh.');
-                }}
-              >
-                <span>Tìm hiểu phần mềm quản lý sân</span>
-                <i className="bi bi-arrow-right"></i>
-              </a>
+              {onOpenOwnerDashboard && (
+                <button 
+                  type="button"
+                  className="btn btn-outline-light fw-bold px-4 py-2 rounded-3"
+                  onClick={onOpenOwnerDashboard}
+                >
+                  <i className="bi bi-speedometer2 me-1"></i> Truy cập Kênh Chủ Sân
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -48,4 +46,3 @@ export default function PartnerBanner({ onOpenPartnerModal, onOpenAuth }) {
     </section>
   );
 }
-

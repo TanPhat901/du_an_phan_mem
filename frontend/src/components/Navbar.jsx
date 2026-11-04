@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function Navbar({ onOpenAuth, onOpenMyBookings, activeTab, setActiveTab, currentUser, onLogout }) {
+export default function Navbar({ onOpenAuth, onOpenMyBookings, onOpenOwnerDashboard, activeTab, setActiveTab, currentUser, onLogout }) {
   return (
     <nav className="navbar navbar-expand-lg bg-white border-bottom sticky-top py-3">
       <div className="container">
@@ -27,7 +27,7 @@ export default function Navbar({ onOpenAuth, onOpenMyBookings, activeTab, setAct
 
         {/* Nav Links */}
         <div className="collapse navbar-collapse" id="navbarContent">
-          <ul className="navbar-nav mx-auto mb-2 mb-lg-0 gap-lg-3">
+          <ul className="navbar-nav mx-auto mb-2 mb-lg-0 gap-lg-3 align-items-lg-center">
             <li className="nav-item">
               <a 
                 className={`nav-link nav-link-custom ${activeTab === 'home' ? 'active' : ''}`} 
@@ -63,16 +63,15 @@ export default function Navbar({ onOpenAuth, onOpenMyBookings, activeTab, setAct
               </a>
             </li>
             <li className="nav-item">
-              <a 
-                className="nav-link nav-link-custom" 
-                href="#guide"
-                onClick={(e) => {
-                  e.preventDefault();
-                  alert('SportsBooking: Chọn sân yêu thích -> Chọn khung giờ -> Đặt cọc hoặc thanh toán trực tiếp tại sân. Rất đơn giản!');
-                }}
+              <button 
+                type="button"
+                className="btn btn-sm btn-outline-success rounded-pill fw-semibold d-flex align-items-center gap-1 px-3 py-1 shadow-xs"
+                onClick={onOpenOwnerDashboard}
+                title="Chuyển sang giao diện quản lý dành cho chủ sân thể thao"
               >
-                Hướng dẫn
-              </a>
+                <i className="bi bi-buildings-fill text-brand"></i>
+                <span>Kênh Chủ Sân</span>
+              </button>
             </li>
           </ul>
 
@@ -101,15 +100,26 @@ export default function Navbar({ onOpenAuth, onOpenMyBookings, activeTab, setAct
                       {currentUser.facilityName}
                     </div>
                   )}
-                  <button 
-                    type="button" 
-                    className="btn btn-link p-0 text-danger small text-decoration-none d-flex align-items-center gap-1"
-                    style={{ fontSize: '0.75rem' }}
-                    onClick={onLogout}
-                  >
-                    <i className="bi bi-box-arrow-right"></i>
-                    <span>Đăng xuất</span>
-                  </button>
+                  <div className="d-flex align-items-center gap-2 mt-1">
+                    <button
+                      type="button"
+                      className="btn btn-link p-0 text-success small text-decoration-none fw-bold"
+                      style={{ fontSize: '0.72rem' }}
+                      onClick={onOpenOwnerDashboard}
+                    >
+                      Quản lý sân
+                    </button>
+                    <span className="text-muted small">•</span>
+                    <button 
+                      type="button" 
+                      className="btn btn-link p-0 text-danger small text-decoration-none d-flex align-items-center gap-1"
+                      style={{ fontSize: '0.72rem' }}
+                      onClick={onLogout}
+                    >
+                      <i className="bi bi-box-arrow-right"></i>
+                      <span>Đăng xuất</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (

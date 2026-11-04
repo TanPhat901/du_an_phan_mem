@@ -37,7 +37,15 @@ Dự án trang chủ hệ thống đặt sân thể thao **SportsBooking** đư�
    - **Đặt sân tức thì**: Chọn ngày, khung giờ chơi, điền họ tên, số điện thoại, tính giá tự động và lưu vào hệ thống Backend.
    - **Xem danh sách lịch đặt**: Xem lại các đơn đặt sân đã xác nhận.
    - **Đăng ký đối tác chủ sân**: Đăng ký sân để tiếp cận khách hàng.
-   - **Đăng nhập / Đăng ký**: Hỗ trợ tài khoản người chơi.
+   - **Đăng nhập / Đăng ký**: Hỗ trợ tài khoản người chơi và tài khoản chủ sân đối tác.
+8. **Kênh Quản Lý Dành Riêng Cho Chủ Sân (Owner Portal & Multi-Vendor Dashboard)**:
+   - **Chuyển đổi linh hoạt giữa các Cụm sân / Chủ sân (Multi-Vendor)**: Quản lý nhiều cơ sở thể thao khác nhau (The Yard Padel, Celadon Sport Club, Sky Garden Arena...).
+   - **Tổng quan & Báo cáo KPIs**: Thống kê doanh thu tháng, lượt đặt sân, tỷ lệ lấp đầy sân (Occupancy %) và biểu đồ doanh thu 7 ngày.
+   - **Quản lý Danh sách Sân & Bộ môn**: Thêm/Sửa/Xóa từng sân con (Padel, Pickleball, Bóng đá mini, Tennis, Cầu lông...), cấu hình bảng giá giờ thường / giờ cao điểm và gạt nút bật/tắt bảo trì.
+   - **Ma trận Lịch đặt Khung giờ trực quan (Time-slot Grid)**: Xem slot trống theo từng sân và khung giờ, hỗ trợ **"Đặt sân nhanh tại quầy (Walk-in)"** cho khách vãng lai gọi điện.
+   - **Quản lý Đơn đặt sân & Check-in**: Duyệt đơn, check-in khách khi tới sân, hủy đơn.
+   - **Báo cáo Dòng tiền & Đối soát tài khoản**: Theo dõi tiền thu online qua hệ thống vs tiền mặt tại quầy, lịch sử giải ngân về tài khoản ngân hàng của chủ sân.
+   - **Cấu hình Cơ sở & Mã VietQR**: Tên cụm sân, địa chỉ, hotline, số tài khoản ngân hàng và mã VietQR nhận tiền tự động.
 
 ---
 

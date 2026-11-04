@@ -215,4 +215,85 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// POST /api/courts - Owner creates a new court
+router.post('/', async (req, res) => {
+  try {
+    const { name, category, sportType, address, city, pricePerHour, amenities, imageUrl, openTime } = req.body;
+    
+    if (!name || !pricePerHour) {
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp tên sân và giá thuê!' });
+    }
+
+    const courts = getCourtsFromFile();
+    const newCourt = {
+      id: Date.now(),
+      name,
+      category: category || 'THỂ THAO TỔNG HỢP',
+      sportType: sportType || 'sport',
+      rating: 5.0,
+      ratingFormatted: '5.0',
+      reviewCount: 1,
+      address: address || 'TP. Hồ Chí Minh',
+      city: city || 'TP. Hồ Chí Minh',
+      pricePerHour: parseInt(pricePerHour, 10),
+      priceFormatted: `${parseInt(pricePerHour, 10).toLocaleString('vi-VN')}đ`,
+      imageUrl: imageUrl || 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
+      amenities: Array.isArray(amenities) ? amenities : ['Đèn Led', 'Bãi đỗ xe', 'Phòng thay đồ'],
+      openTime: openTime || '06:00 - 23:00',
+      featured: false,
+      availableSlots: ["06:00 - 07:00", "07:00 - 08:00", "17:00 - 18:00", "18:00 - 19:00", "19:00 - 20:00", "20:00 - 21:00"]
+    };
+
+    courts.unshift(newCourt);
+    fs.writeFileSync(courtsFilePath, JSON.stringify(courts, null, 2), 'utf-8');
+
+    res.status(201).json({ success: true, message: 'Thêm sân thể thao mới thành công!', data: newCourt });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Lỗi khi tạo sân mới', error: err.message });
+  }
+});
+
+// PUT /api/courts/:id - Owner updates court information
+router.put('/:id', async (req, res) => {
+  try {
+    const courtId = parseInt(req.params.id, 10);
+    const courts = getCourtsFromFile();
+    const index = courts.findIndex(c => c.id === courtId);
+
+    if (index === -1) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy sân thể thao cần sửa' });
+    }
+
+    courts[index] = {
+      ...courts[index],
+      ...req.body,
+      id: courtId
+    };
+
+    fs.writeFileSync(courtsFilePath, JSON.stringify(courts, null, 2), 'utf-8');
+    res.json({ success: true, message: 'Cập nhật thông tin sân thành công!', data: courts[index] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Lỗi khi cập nhật sân', error: err.message });
+  }
+});
+
+// DELETE /api/courts/:id - Owner deletes a court
+router.delete('/:id', async (req, res) => {
+  try {
+    const courtId = parseInt(req.params.id, 10);
+    let courts = getCourtsFromFile();
+    const courtToDelete = courts.find(c => c.id === courtId);
+
+    if (!courtToDelete) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy sân thể thao cần xóa' });
+    }
+
+    courts = courts.filter(c => c.id !== courtId);
+    fs.writeFileSync(courtsFilePath, JSON.stringify(courts, null, 2), 'utf-8');
+    res.json({ success: true, message: 'Đã xóa sân thể thao thành công!' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Lỗi khi xóa sân', error: err.message });
+  }
+});
+
 module.exports = router;

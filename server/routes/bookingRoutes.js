@@ -186,4 +186,74 @@ router.post('/partner', async (req, res) => {
   });
 });
 
+// PATCH /api/bookings/:id/status - Owner updates booking status
+router.patch('/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status, note } = req.body;
+
+  if (!status) {
+    return res.status(400).json({ success: false, message: 'Vui lòng cung cấp trạng thái mới!' });
+  }
+
+  // 1. If DB connected
+  if (isDbConnected()) {
+    try {
+      const numericId = parseInt(id.replace('BK-', ''), 10);
+      let dbStatus = 'CONFIRMED';
+      if (status.includes('hủy') || status === 'CANCELLED') dbStatus = 'CANCELLED';
+      if (status.includes('hoàn thành') || status.includes('check-in') || status === 'COMPLETED') dbStatus = 'COMPLETED';
+
+      await pool.query('UPDATE bookings SET status = $1, updated_at = NOW() WHERE booking_id = $2', [dbStatus, numericId]);
+    } catch (err) {
+      console.warn('⚠️ Lỗi cập nhật status booking PostgreSQL:', err.message);
+    }
+  }
+
+  // 2. Memory / fallback update
+  const booking = fallbackBookings.find(b => b.id === id || b.id === `BK-${id}`);
+  if (booking) {
+    booking.status = status;
+    if (note) booking.note = note;
+  }
+
+  res.json({
+    success: true,
+    message: `Đã cập nhật trạng thái đơn sang "${status}"`,
+    data: { id, status, note }
+  });
+});
+
+// POST /api/bookings/walk-in - Owner creates walk-in booking at counter
+router.post('/walk-in', async (req, res) => {
+  const { courtName, subCourtName, customerName, phone, date, timeSlot, price, paymentMethod, note } = req.body;
+
+  if (!customerName || !phone || !timeSlot) {
+    return res.status(400).json({ success: false, message: 'Vui lòng điền đủ Tên khách, SĐT và Khung giờ!' });
+  }
+
+  const newBooking = {
+    id: `BK-W${Date.now().toString().slice(-4)}`,
+    courtName: courtName || 'The Yard Padel Club Thảo Điền',
+    subCourtName: subCourtName || 'Sân số 1',
+    customerName,
+    phone,
+    date: date || new Date().toISOString().split('T')[0],
+    timeSlot,
+    totalPrice: price || 280000,
+    paymentMethod: paymentMethod || 'Tiền mặt tại quầy',
+    status: 'Đã check-in',
+    isWalkIn: true,
+    note: note || 'Đặt trực tiếp tại quầy',
+    createdAt: new Date().toISOString()
+  };
+
+  fallbackBookings.unshift(newBooking);
+
+  res.status(201).json({
+    success: true,
+    message: 'Tạo đơn đặt sân tại quầy thành công!',
+    data: newBooking
+  });
+});
+
 module.exports = router;
