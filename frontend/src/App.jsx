@@ -11,6 +11,7 @@ import MyBookingsModal from './components/MyBookingsModal';
 import AuthPage from './components/AuthPage';
 import CourtDetailPage from './components/CourtDetailPage';
 import OwnerDashboard from './components/OwnerDashboard';
+import ProfilePage from './components/ProfilePage';
 
 // Initial fallback courts identical to backend JSON & screenshot
 const INITIAL_COURTS = [
@@ -68,7 +69,7 @@ const INITIAL_COURTS = [
 ];
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('home'); // 'home' | 'login' | 'register'
+  const [currentView, setCurrentView] = useState('home'); // 'home' | 'login' | 'register' | 'profile'
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('sportsbooking_user');
     return saved ? JSON.parse(saved) : null;
@@ -193,6 +194,41 @@ export default function App() {
     showNotification('Đã đăng xuất khỏi tài khoản.');
   };
 
+  // Personal profile page (UI phase only)
+  if (currentView === 'profile') {
+    return (
+      <div className="min-vh-100 d-flex flex-column bg-white">
+        <Navbar
+          onOpenAuth={(mode) => setCurrentView(mode)}
+          onOpenMyBookings={() => setShowMyBookings(true)}
+          onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+          onOpenProfile={() => setCurrentView('profile')}
+          onGoHome={() => setCurrentView('home')}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          currentUser={currentUser}
+          onLogout={() => { handleLogout(); setCurrentView('home'); }}
+        />
+        <ProfilePage
+          currentUser={currentUser}
+          onBackToHome={() => setCurrentView('home')}
+          onOpenMyBookings={() => setShowMyBookings(true)}
+          onLogout={() => { handleLogout(); setCurrentView('home'); }}
+        />
+        <Footer
+          onOpenAuth={(mode) => setCurrentView(mode)}
+          onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+        />
+        {showMyBookings && (
+          <MyBookingsModal
+            bookings={bookings}
+            onClose={() => setShowMyBookings(false)}
+          />
+        )}
+      </div>
+    );
+  }
+
   // If in Login or Register Page mode
   if (['login', 'register', 'register-owner'].includes(currentView)) {
     return (
@@ -299,6 +335,8 @@ export default function App() {
         setActiveTab={setActiveTab}
         currentUser={currentUser}
         onLogout={handleLogout}
+        onOpenProfile={() => setCurrentView('profile')}
+        onGoHome={() => setCurrentView('home')}
       />
 
       <main className="flex-grow-1">

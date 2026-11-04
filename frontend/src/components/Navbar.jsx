@@ -1,11 +1,11 @@
 import React from 'react';
 
-export default function Navbar({ onOpenAuth, onOpenMyBookings, onOpenOwnerDashboard, activeTab, setActiveTab, currentUser, onLogout }) {
+export default function Navbar({ onOpenAuth, onOpenMyBookings, onOpenOwnerDashboard, activeTab, setActiveTab, currentUser, onLogout, onOpenProfile, onGoHome }) {
   return (
     <nav className="navbar navbar-expand-lg bg-white border-bottom sticky-top py-3">
       <div className="container">
         {/* Brand Logo */}
-        <a className="navbar-brand d-flex align-items-center gap-2" href="#" onClick={(e) => { e.preventDefault(); setActiveTab('home'); }}>
+        <a className="navbar-brand d-flex align-items-center gap-2" href="#" onClick={(e) => { e.preventDefault(); setActiveTab('home'); onGoHome?.(); }}>
           <div className="d-flex align-items-center justify-content-center bg-brand-light rounded-circle" style={{ width: '38px', height: '38px' }}>
             <i className="bi bi-trophy-fill text-brand fs-5"></i>
           </div>
@@ -32,7 +32,7 @@ export default function Navbar({ onOpenAuth, onOpenMyBookings, onOpenOwnerDashbo
               <a 
                 className={`nav-link nav-link-custom ${activeTab === 'home' ? 'active' : ''}`} 
                 href="#home"
-                onClick={(e) => { e.preventDefault(); setActiveTab('home'); }}
+                onClick={(e) => { e.preventDefault(); setActiveTab('home'); onGoHome?.(); }}
               >
                 Trang chủ
               </a>
@@ -79,15 +79,24 @@ export default function Navbar({ onOpenAuth, onOpenMyBookings, onOpenOwnerDashbo
           <div className="d-flex align-items-center gap-3">
             {currentUser ? (
               <div className="d-flex align-items-center gap-2">
-                <div 
-                  className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold shadow-sm"
-                  style={{ width: '38px', height: '38px', backgroundColor: currentUser.role === 'OWNER' ? '#0b4d3c' : '#10b981' }}
+                <button
+                  type="button"
+                  onClick={onOpenProfile}
+                  title="Mở hồ sơ cá nhân"
+                  aria-label="Mở hồ sơ cá nhân"
+                  className="border-0 p-0 rounded-circle d-flex align-items-center justify-content-center text-white fw-bold shadow-sm"
+                  style={{ width: '38px', height: '38px', backgroundColor: currentUser.role === 'OWNER' ? '#0b4d3c' : '#10b981', cursor: 'pointer' }}
                 >
                   {currentUser.fullName ? currentUser.fullName.charAt(0).toUpperCase() : 'U'}
-                </div>
+                </button>
                 <div className="d-none d-sm-block text-start">
                   <div className="d-flex align-items-center gap-1">
-                    <span className="small fw-bold text-dark">{currentUser.fullName}</span>
+                    <button
+                      type="button"
+                      onClick={onOpenProfile}
+                      title="Xem hồ sơ cá nhân"
+                      className="btn btn-link p-0 small fw-bold text-dark text-decoration-none"
+                    >{currentUser.fullName || 'Tài khoản'}</button>
                     <span 
                       className={`badge rounded-pill ${currentUser.role === 'OWNER' ? 'bg-success text-white' : (currentUser.role === 'ADMIN' ? 'bg-danger text-white' : 'bg-light text-success border border-success-subtle')}`}
                       style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem' }}
@@ -100,7 +109,16 @@ export default function Navbar({ onOpenAuth, onOpenMyBookings, onOpenOwnerDashbo
                       {currentUser.facilityName}
                     </div>
                   )}
-                  <div className="d-flex align-items-center gap-2 mt-1">
+                  <div className="d-flex align-items-center gap-2 mt-1 flex-wrap">
+                    <button
+                      type="button"
+                      className="btn btn-link p-0 text-success small text-decoration-none fw-bold"
+                      style={{ fontSize: '0.72rem' }}
+                      onClick={onOpenProfile}
+                    >
+                      <i className="bi bi-person-circle me-1"></i>Hồ sơ cá nhân
+                    </button>
+                    <span className="text-muted small">•</span>
                     <button
                       type="button"
                       className="btn btn-link p-0 text-success small text-decoration-none fw-bold"
