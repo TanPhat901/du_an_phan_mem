@@ -107,18 +107,13 @@ export default function AuthPage({
         });
         const data = await response.json();
         if (response.ok && data.success) {
-          onAuthSuccess(data.data);
+          if (!data.data?.token) throw new Error('Máy chủ không trả về JWT hợp lệ.');
+          onAuthSuccess(data.data, rememberMe);
         } else {
           setErrorMessage(data.message || 'Tài khoản hoặc mật khẩu không chính xác.');
         }
       } catch {
-        const isOwner = loginInput.includes('owner') || loginInput.includes('theyard');
-        onAuthSuccess({
-          fullName: loginInput.includes('@') ? loginInput.split('@')[0] : 'Người dùng SportsBooking',
-          emailOrPhone: loginInput,
-          role: isOwner ? 'OWNER' : 'USER',
-          facilityName: isOwner ? 'The Yard Padel Club Thảo Điền' : null
-        });
+        setErrorMessage('Không thể đăng nhập. Kiểm tra kết nối Backend và thử lại.');
       } finally {
         setLoading(false);
       }
@@ -182,17 +177,13 @@ export default function AuthPage({
 
           const data = await response.json();
           if (response.ok && data.success) {
-            onAuthSuccess(data.data);
+            if (data.data?.token) onAuthSuccess(data.data, rememberMe);
+            else { setSuccessMessage('Đăng ký thành công. Vui lòng đăng nhập.'); setMode('login'); }
           } else {
             setErrorMessage(data.message || 'Đăng ký không thành công, vui lòng thử lại.');
           }
         } catch {
-          onAuthSuccess({
-            fullName: managerName || fullName,
-            emailOrPhone,
-            role: 'OWNER',
-            facilityName: courtName
-          });
+          setErrorMessage('Không thể kết nối Backend để đăng ký chủ sân.');
         } finally {
           setLoading(false);
         }
@@ -214,12 +205,13 @@ export default function AuthPage({
 
         const data = await response.json();
         if (response.ok && data.success) {
-          onAuthSuccess(data.data);
+          if (data.data?.token) onAuthSuccess(data.data, rememberMe);
+          else { setSuccessMessage('Đăng ký thành công. Vui lòng đăng nhập.'); setMode('login'); }
         } else {
           setErrorMessage(data.message || 'Đăng ký không thành công, vui lòng thử lại.');
         }
       } catch {
-        onAuthSuccess({ fullName, emailOrPhone, role: 'USER' });
+        setErrorMessage('Không thể kết nối Backend để đăng ký tài khoản.');
       } finally {
         setLoading(false);
       }
@@ -403,7 +395,7 @@ export default function AuthPage({
                         <button 
                           type="button" 
                           className="social-login-btn"
-                          onClick={() => onAuthSuccess({ fullName: 'Google User', emailOrPhone: 'user.google@gmail.com', role: 'USER' })}
+                          disabled title="Chưa tích hợp đăng nhập mạng xã hội"
                         >
                           <svg width="18" height="18" viewBox="0 0 24 24">
                             <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
@@ -419,7 +411,7 @@ export default function AuthPage({
                         <button 
                           type="button" 
                           className="social-login-btn"
-                          onClick={() => onAuthSuccess({ fullName: 'Facebook User', emailOrPhone: 'user.facebook@fb.com', role: 'USER' })}
+                          disabled title="Chưa tích hợp đăng nhập mạng xã hội"
                         >
                           <i className="bi bi-facebook text-primary fs-5"></i>
                           <span>Facebook</span>
@@ -430,7 +422,7 @@ export default function AuthPage({
                         <button 
                           type="button" 
                           className="social-login-btn"
-                          onClick={() => onAuthSuccess({ fullName: 'Apple User', emailOrPhone: 'user.apple@icloud.com', role: 'USER' })}
+                          disabled title="Chưa tích hợp đăng nhập mạng xã hội"
                         >
                           <i className="bi bi-apple text-dark fs-5"></i>
                           <span>Apple</span>
@@ -442,28 +434,8 @@ export default function AuthPage({
                       {mode === 'login' ? 'HOẶC TIẾP TỤC VỚI EMAIL / SĐT' : 'HOẶC ĐIỀN THÔNG TIN BÊN DƯỚI'}
                     </div>
 
-                    {/* Quick Demo Test Buttons */}
-                    <div className="mb-3 d-flex flex-wrap gap-2 align-items-center">
-                      <span className="small text-muted" style={{ fontSize: '0.72rem' }}>Thử nhanh:</span>
-                      <button 
-                        type="button" 
-                        className="btn btn-outline-success btn-sm py-0 px-2"
-                        style={{ fontSize: '0.72rem' }}
-                        onClick={() => handleQuickFill('an.nguyen@example.com', 'password123', 'USER')}
-                      >
-                        👤 Người chơi (An Nguyễn)
-                      </button>
-                      <button 
-                        type="button" 
-                        className="btn btn-outline-dark btn-sm py-0 px-2"
-                        style={{ fontSize: '0.72rem' }}
-                        onClick={() => handleQuickFill('theyard@sportsbooking.vn', 'owner123', 'OWNER')}
-                      >
-                        🏢 Chủ sân (The Yard)
-                      </button>
-                    </div>
-
-                    {/* Success Alert */}
+                                         {/* Đăng nhập bằng tài khoản đã đăng ký trong PostgreSQL */}
+{/* Success Alert */}
                     {successMessage && (
                       <div className="alert alert-success py-2 small mb-3 d-flex align-items-center gap-2">
                         <i className="bi bi-check-circle-fill text-success fs-5"></i>
@@ -513,7 +485,7 @@ export default function AuthPage({
                                 style={{ color: '#0b4d3c' }}
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  alert('Mẹo: Bạn có thể đăng nhập bằng tài khoản mẫu bên trên (an.nguyen@example.com / password123 hoặc theyard@sportsbooking.vn / owner123). Hotline: 1900 8899');
+                                  setErrorMessage('Chức năng đặt lại mật khẩu đang được phát triển.');
                                 }}
                               >
                                 Quên mật khẩu?
