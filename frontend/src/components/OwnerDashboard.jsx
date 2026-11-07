@@ -279,21 +279,68 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout }) 
   // Navigation active tab
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'courts' | 'schedule' | 'finance' | 'settings'
 
-  // Facilities & active facility selection
-  const [facilities, setFacilities] = useState(() => {
-    const saved = localStorage.getItem('sportsbooking_facilities');
-    return saved ? JSON.parse(saved) : INITIAL_FACILITIES;
+  // Cụm sân thật đã xác nhận trong PostgreSQL. Backend hiện chưa có API liệt kê cụm sân.
+  const facilities = [{
+    id: 2, name: 'The Yard Padel Club Thảo Điền', ownerName: currentUser?.fullName || 'Chủ sân',
+    ownerPhone: '', ownerEmail: '', category: 'PADEL & PICKLEBALL',
+    sportTypes: ['Padel', 'Pickleball'], address: '', city: '', openTime: '',
+    bankName: '', bankAccountNo: '', bankAccountName: '', depositRate: 0,
+    cancelHoursBefore: 0, monthlyRevenue: 0, totalBookings: 0,
+    occupancyRate: 0, rating: '—', imageUrl: ''
+  }];
+  const [selectedFacilityId, setSelectedFacilityId] = useState(2);
+  const [subCourts, setSubCourts] = useState([]);
+  const [courtsLoading, setCourtsLoading] = useState(true);
+  const [courtSaving, setCourtSaving] = useState(false);
+  const [courtsError, setCourtsError] = useState('');
+  const getToken = () => {
+  return (
+    localStorage.getItem('sportsbooking_token') ||
+    sessionStorage.getItem('sportsbooking_token') ||
+    ''
+  );
+};
+  const ownerRequest = async (path, options = {}) => {
+    const token = getToken();
+    if (!token) throw new Error('Không tìm thấy JWT. Vui lòng đăng nhập lại bằng tài khoản OWNER.');
+    const response = await fetch(`http://localhost:5000/api/owner${path}`, {
+      ...options,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...options.headers }
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.success === false) {
+      throw new Error(payload.message || `API trả về HTTP ${response.status}`);
+    }
+    return payload;
+  };
+  const mapCourt = (item) => ({
+    id: Number(item.sub_court_id), facilityId: Number(item.court_id),
+    name: item.name, sportTypeId: Number(item.sport_type_id),
+    sportType: item.sport_name || ({1:'Padel',2:'Pickleball'}[Number(item.sport_type_id)] || 'Khác'),
+    courtType: item.description || '', surfaceType: item.surface_type || '',
+    priceNormal: Number(item.normal_price), pricePeak: Number(item.peak_price),
+    status: item.status, amenities: item.amenities || [],
+    imageUrl: item.image_url || 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=600&q=80',
+    isVisible: item.is_visible
   });
-
-  const [selectedFacilityId, setSelectedFacilityId] = useState(() => {
-    return facilities[0]?.id || 1;
-  });
-
-  // Sub-courts state
-  const [subCourts, setSubCourts] = useState(() => {
-    const saved = localStorage.getItem('sportsbooking_subcourts');
-    return saved ? JSON.parse(saved) : INITIAL_SUB_COURTS;
-  });
+  const loadCourts = async () => {
+    setCourtsLoading(true);
+    setCourtsError('');
+    try {
+      const payload = await ownerRequest('/courts');
+      setSubCourts((payload.data || []).map(mapCourt));
+    } catch (error) {
+      setCourtsError(error.message);
+      setSubCourts([]);
+    } finally {
+      setCourtsLoading(false);
+    }
+  };
+  useEffect(() => {
+  if (currentUser) {
+    loadCourts();
+  }
+}, [currentUser?.id, currentUser?.user_id]);
 
   // Bookings state
   const [bookings, setBookings] = useState(() => {
@@ -314,19 +361,10 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout }) 
   const [editingCourt, setEditingCourt] = useState(null);
   const [showWalkInModal, setShowWalkInModal] = useState(false);
   const [selectedSlotForWalkIn, setSelectedSlotForWalkIn] = useState(null);
-  const [showFacilityModal, setShowFacilityModal] = useState(false);
   const [selectedBookingDetail, setSelectedBookingDetail] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
 
-  // Save to localStorage when state updates
-  useEffect(() => {
-    localStorage.setItem('sportsbooking_facilities', JSON.stringify(facilities));
-  }, [facilities]);
-
-  useEffect(() => {
-    localStorage.setItem('sportsbooking_subcourts', JSON.stringify(subCourts));
-  }, [subCourts]);
-
+  // Dữ liệu sân lấy từ PostgreSQL, không ghi đè bằng localStorage.
   useEffect(() => {
     localStorage.setItem('sportsbooking_owner_bookings', JSON.stringify(bookings));
   }, [bookings]);
@@ -361,24 +399,52 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout }) 
     showToast(`Đã chuyển sang quản lý cụm sân: ${facilities.find(f => f.id === Number(facId))?.name}`);
   };
 
-  // Toggle court status (ACTIVE <-> MAINTENANCE)
-  const handleToggleCourtStatus = (courtId) => {
-    setSubCourts(prev => prev.map(court => {
-      if (court.id === courtId) {
-        const nextStatus = court.status === 'ACTIVE' ? 'MAINTENANCE' : 'ACTIVE';
-        showToast(`Sân "${court.name}" chuyển sang: ${nextStatus === 'ACTIVE' ? 'Đang mở đón khách 🟢' : 'Đang bảo trì 🟡'}`);
-        return { ...court, status: nextStatus };
-      }
-      return court;
-    }));
+  // Chỉ cập nhật giao diện sau khi API ghi thành công vào PostgreSQL.
+  const handleToggleCourtStatus = async (courtId) => {
+    const court = subCourts.find(c => c.id === courtId);
+    if (!court) return;
+    const status = court.status === 'ACTIVE' ? 'MAINTENANCE' : 'ACTIVE';
+    try {
+      await ownerRequest(`/courts/${courtId}`, { method: 'PUT', body: JSON.stringify({ status }) });
+      await loadCourts();
+      showToast(`Đã cập nhật trạng thái sân thành ${status}.`);
+    } catch (error) { showToast(`Không thể cập nhật: ${error.message}`); }
   };
 
-  // Delete sub-court
-  const handleDeleteCourt = (courtId) => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa sân con này khỏi cụm sân?')) {
-      setSubCourts(prev => prev.filter(c => c.id !== courtId));
-      showToast('Đã xóa sân con thành công.');
+  const handleDeleteCourt = () => {
+    showToast('Backend chưa có API xóa sân. Không có dữ liệu nào bị xóa.');
+  };
+
+  const handleSaveCourt = async (e) => {
+    e.preventDefault();
+    if (courtSaving) return;
+    const form = new FormData(e.currentTarget);
+    const sportName = String(form.get('sportType'));
+    const sportTypeId = ({ Padel: 1, Pickleball: 2 })[sportName];
+    if (!sportTypeId) { showToast('Chưa có ID bộ môn tương ứng trong database.'); return; }
+    const normal = Number(form.get('priceNormal'));
+    const peak = Number(form.get('pricePeak'));
+    if (!Number.isFinite(normal) || normal < 0 || !Number.isFinite(peak) || peak < normal) {
+      showToast('Giá cao điểm phải lớn hơn hoặc bằng giá thường.'); return;
     }
+    const body = {
+      name: String(form.get('courtName')).trim(), sport_type_id: sportTypeId,
+      description: String(form.get('courtType') || ''),
+      surface_type: String(form.get('surfaceType') || ''),
+      normal_price: normal, peak_price: peak,
+      image_url: String(form.get('imageUrl') || '')
+    };
+    if (!editingCourt) { body.court_id = selectedFacilityId; body.amenities = []; }
+    setCourtSaving(true);
+    try {
+      await ownerRequest(editingCourt ? `/courts/${editingCourt.id}` : '/courts', {
+        method: editingCourt ? 'PUT' : 'POST', body: JSON.stringify(body)
+      });
+      await loadCourts();
+      setShowAddCourtModal(false);
+      showToast(editingCourt ? 'Đã lưu thay đổi vào PostgreSQL.' : 'Đã thêm sân vào PostgreSQL.');
+    } catch (error) { showToast(`Lưu thất bại: ${error.message}`); }
+    finally { setCourtSaving(false); }
   };
 
   // Update booking status
@@ -486,7 +552,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout }) 
                   className="btn btn-outline-success" 
                   type="button" 
                   title="Thêm cụm sân / cơ sở mới"
-                  onClick={() => setShowFacilityModal(true)}
+                  onClick={() => showToast("Backend chưa hỗ trợ thêm cụm sân.")}
                 >
                   <i className="bi bi-plus-lg"></i>
                 </button>
@@ -664,7 +730,8 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout }) 
               ========================================== */}
           {activeTab === 'overview' && (
             <div>
-              {/* 4 KPI Cards */}
+              <div className="alert alert-warning small">Các số liệu doanh thu, lịch đặt và cấu hình cơ sở bên dưới vẫn là giao diện demo; chưa đồng bộ với backend.</div>
+          {/* 4 KPI Cards */}
               <div className="row g-3 mb-4">
                 <div className="col-xl-3 col-sm-6">
                   <div className="card border-0 shadow-sm rounded-3 h-100 p-3 bg-white">
@@ -1000,7 +1067,9 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout }) 
                 </div>
               </div>
 
-              {/* Sub-Courts Grid */}
+              {courtsLoading && <div className="alert alert-info">Đang tải danh sách sân từ PostgreSQL...</div>}
+          {courtsError && <div className="alert alert-danger">{courtsError} <button className="btn btn-sm btn-outline-danger ms-2" onClick={loadCourts}>Thử lại</button></div>}
+          {/* Sub-Courts Grid */}
               <div className="row g-4">
                 {filteredSubCourts.length === 0 ? (
                   <div className="col-12 text-center py-5">
@@ -1095,8 +1164,8 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout }) 
                               </button>
                               <button 
                                 className="btn btn-outline-danger"
-                                onClick={() => handleDeleteCourt(court.id)}
-                                title="Xóa sân con này"
+                                onClick={() => handleDeleteCourt(court.id)} disabled
+                                title="Backend chưa hỗ trợ xóa sân"
                               >
                                 <i className="bi bi-trash"></i>
                               </button>
@@ -1594,54 +1663,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout }) 
                 ></button>
               </div>
 
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                const formData = new FormData(e.target);
-                const name = formData.get('courtName');
-                const sportType = formData.get('sportType');
-                const courtType = formData.get('courtType');
-                const surfaceType = formData.get('surfaceType');
-                const priceNormal = parseInt(formData.get('priceNormal'), 10) || 200000;
-                const pricePeak = parseInt(formData.get('pricePeak'), 10) || 300000;
-                const imageUrl = formData.get('imageUrl') || 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=600&q=80';
-
-                if (editingCourt) {
-                  setSubCourts(prev => prev.map(c => {
-                    if (c.id === editingCourt.id) {
-                      return {
-                        ...c,
-                        name,
-                        sportType,
-                        courtType,
-                        surfaceType,
-                        priceNormal,
-                        pricePeak,
-                        imageUrl
-                      };
-                    }
-                    return c;
-                  }));
-                  showToast(`Đã cập nhật thông tin sân "${name}" thành công!`);
-                } else {
-                  const newCourt = {
-                    id: Date.now(),
-                    facilityId: selectedFacilityId,
-                    name,
-                    sportType,
-                    courtType,
-                    surfaceType,
-                    priceNormal,
-                    pricePeak,
-                    status: 'ACTIVE',
-                    amenities: ["Đèn LED chuẩn thi đấu", "Bãi xe ô tô", "Phòng thay đồ"],
-                    imageUrl
-                  };
-                  setSubCourts(prev => [newCourt, ...prev]);
-                  showToast(`Đã thêm sân "${name}" thành công!`);
-                }
-
-                setShowAddCourtModal(false);
-              }}>
+              <form onSubmit={handleSaveCourt}>
                 <div className="modal-body p-4">
                   <div className="row g-3">
                     <div className="col-md-8">
@@ -1737,8 +1759,8 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout }) 
                   >
                     Hủy
                   </button>
-                  <button type="submit" className="btn btn-brand px-4">
-                    {editingCourt ? 'Cập Nhật' : 'Lưu Sân Mới'}
+                  <button type="submit" disabled={courtSaving} className="btn btn-brand px-4">
+                    {courtSaving ? 'Đang lưu...' : (editingCourt ? 'Cập Nhật' : 'Lưu Sân Mới')}
                   </button>
                 </div>
               </form>
@@ -1997,119 +2019,6 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout }) 
         </div>
       )}
 
-      {/* ========================================================
-          MODAL 4: THÊM CỤM SÂN / CƠ SỞ MỚI (MULTI-FACILITY)
-          ======================================================== */}
-      {showFacilityModal && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg rounded-3">
-              <div className="modal-header bg-brand-dark text-white">
-                <h5 className="modal-title fw-bold">
-                  <i className="bi bi-buildings me-2"></i>
-                  Đăng Ký Thêm Cụm Sân Thể Thao Mới
-                </h5>
-                <button 
-                  type="button" 
-                  className="btn-close btn-close-white" 
-                  onClick={() => setShowFacilityModal(false)}
-                ></button>
-              </div>
-
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                const formData = new FormData(e.target);
-                const name = formData.get('facilityName');
-                const category = formData.get('category');
-                const address = formData.get('address');
-                const city = formData.get('city');
-
-                const newFacility = {
-                  id: Date.now(),
-                  name,
-                  ownerName: currentUser?.fullName || "Chủ Sân Mới",
-                  ownerPhone: "0912345678",
-                  ownerEmail: "owner.new@sportsbooking.vn",
-                  category,
-                  sportTypes: category.split('&').map(s => s.trim()),
-                  address,
-                  city,
-                  openTime: "06:00 - 23:00",
-                  bankName: "Vietcombank",
-                  bankAccountNo: "9999888877",
-                  bankAccountName: "CHU SAN MOI",
-                  depositRate: 50,
-                  cancelHoursBefore: 4,
-                  monthlyRevenue: 0,
-                  totalBookings: 0,
-                  occupancyRate: 0,
-                  rating: 5.0,
-                  imageUrl: "https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80"
-                };
-
-                setFacilities(prev => [...prev, newFacility]);
-                setSelectedFacilityId(newFacility.id);
-                showToast(`Đã thêm cụm sân "${name}" thành công!`);
-                setShowFacilityModal(false);
-              }}>
-                <div className="modal-body p-4">
-                  <div className="mb-3">
-                    <label className="form-label small fw-semibold">Tên Cụm Sân / CLB (*)</label>
-                    <input 
-                      type="text" 
-                      name="facilityName" 
-                      className="form-control" 
-                      required 
-                      placeholder="Ví dụ: Trung Tâm Thể Thao Quận 2"
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label small fw-semibold">Phân Loại Thể Thao (*)</label>
-                    <select name="category" className="form-select">
-                      <option value="PADEL & PICKLEBALL">PADEL & PICKLEBALL</option>
-                      <option value="BÓNG ĐÁ & TENNIS">BÓNG ĐÁ & TENNIS</option>
-                      <option value="CẦU LÔNG TRONG NHÀ">CẦU LÔNG TRONG NHÀ</option>
-                      <option value="BÓNG RỔ & BÓNG CHUYỀN">BÓNG RỔ & BÓNG CHUYỀN</option>
-                    </select>
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label small fw-semibold">Địa Chỉ Chi Tiết (*)</label>
-                    <input 
-                      type="text" 
-                      name="address" 
-                      className="form-control" 
-                      required 
-                      placeholder="Số nhà, Tên đường, Phường/Xã..."
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label small fw-semibold">Thành Phố / Tỉnh</label>
-                    <input 
-                      type="text" 
-                      name="city" 
-                      className="form-control" 
-                      defaultValue="TP. Hồ Chí Minh"
-                    />
-                  </div>
-                </div>
-
-                <div className="modal-footer bg-light">
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary" 
-                    onClick={() => setShowFacilityModal(false)}
-                  >
-                    Hủy
-                  </button>
-                  <button type="submit" className="btn btn-brand px-4">
-                    Tạo Cụm Sân
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );
