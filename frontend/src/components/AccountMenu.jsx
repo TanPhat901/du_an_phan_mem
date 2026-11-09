@@ -77,12 +77,12 @@ export default function AccountMenu({
       {open && (
         <div
           role="menu"
-          className="account-dropdown-menu dropdown-menu dropdown-menu-end show shadow-lg border rounded-4 p-2 mt-2"
+          className="account-dropdown-menu dropdown-menu dropdown-menu-end show shadow-sm border rounded-3 p-2 mt-2"
         >
           {/* User Identity Card (revealed when clicked, Facebook style) */}
           <div className="p-2 mb-2 rounded-3 bg-light border d-flex align-items-center gap-2">
             <span
-              className="rounded-circle d-inline-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0 shadow-xs"
+              className="rounded-circle d-inline-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0 shadow-sm"
               style={{ width: '40px', height: '40px', fontSize: '1rem', backgroundColor: avatarBg }}
             >
               {currentUser.fullName ? currentUser.fullName.charAt(0).toUpperCase() : 'U'}

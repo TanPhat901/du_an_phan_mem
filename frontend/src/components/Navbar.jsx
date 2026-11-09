@@ -64,13 +64,10 @@ export default function Navbar({
           href="#home"
           onClick={handleNavHome}
         >
-          <div
-            className="d-flex align-items-center justify-content-center bg-brand-light rounded-circle"
-            style={{ width: '38px', height: '38px' }}
-          >
-            <i className="bi bi-trophy-fill text-brand fs-5"></i>
-          </div>
-          <span className="fw-bold fs-4 text-brand-dark tracking-tight">SportsBooking</span>
+          <span className="brand-mark-box">
+            <i className="bi bi-trophy-fill"></i>
+          </span>
+          <span className="fw-bold fs-5 text-brand-dark">SportsBooking</span>
         </a>
 
         {/* Right Controls (Facebook-style Account Icon + Mobile Menu Toggle) */}

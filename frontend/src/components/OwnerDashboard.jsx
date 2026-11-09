@@ -561,7 +561,7 @@ export default function OwnerDashboard({
       await loadCourts();
       await loadAnalytics(currentFacility?.id, selectedScheduleDate);
       setShowAddCourtModal(false);
-      showToast(editingCourt ? 'Đã lưu thay đổi vào PostgreSQL.' : 'Đã thêm sân mới vào PostgreSQL.');
+      showToast(editingCourt ? 'Đã lưu thay đổi sân.' : 'Đã thêm sân mới thành công.');
     } catch (error) {
       showToast(`Lưu thất bại: ${error.message}`);
     } finally {
@@ -595,7 +595,7 @@ export default function OwnerDashboard({
         })
       });
       await loadFacilities(currentFacility.id);
-      showToast(payload.message || 'Đã lưu cấu hình cụm sân vào PostgreSQL!');
+      showToast(payload.message || 'Đã lưu cấu hình cụm sân.');
     } catch (error) {
       showToast(`Lưu cấu hình thất bại: ${error.message}`);
     } finally {
@@ -984,16 +984,22 @@ export default function OwnerDashboard({
   // Màn hình yêu cầu đăng nhập tài khoản OWNER nếu người dùng chưa đăng nhập đúng vai trò
   if (!isAuthorizedOwner) {
     return (
-      <div className="min-vh-100 bg-light d-flex flex-column justify-content-center align-items-center p-4" style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
-        <div className="card border-0 shadow-lg rounded-4 p-4 p-md-5 text-center bg-white" style={{ maxWidth: '520px', width: '100%' }}>
-          <div className="mx-auto mb-3 d-flex align-items-center justify-content-center bg-success-subtle text-success rounded-circle" style={{ width: '72px', height: '72px' }}>
-            <i className="bi bi-buildings-fill fs-1"></i>
+      <div className="auth-page-wrapper justify-content-center align-items-center p-4">
+        <div className="auth-form-card text-center w-100" style={{ maxWidth: '480px' }}>
+          <div className="d-flex justify-content-center mb-3">
+            <span className="brand-mark-box" style={{ width: '48px', height: '48px', fontSize: '1.3rem', borderRadius: '12px' }}>
+              <i className="bi bi-buildings"></i>
+            </span>
           </div>
-          <h4 className="fw-bold text-brand-dark mb-2">Kênh Quản Lý Dành Cho Chủ Sân</h4>
+          <div className="hero-eyebrow justify-content-center mb-2">
+            <span className="hero-eyebrow-dot"></span>
+            <span>DÀNH CHO ĐỐI TÁC</span>
+          </div>
+          <h4 className="fw-bold text-dark mb-2">Kênh Quản Lý Chủ Sân</h4>
           <p className="text-muted small mb-4">
             {currentUser
-              ? `Tài khoản hiện tại (${currentUser.email}) đang ở vai trò ${currentUser.role}. Vui lòng đăng nhập bằng tài khoản OWNER để quản lý cụm sân, sân con và lịch đặt trong PostgreSQL.`
-              : 'Vui lòng đăng nhập bằng tài khoản Chủ sân (OWNER) để truy cập bảng điều khiển quản lý cụm sân và sân thi đấu.'}
+              ? `Tài khoản hiện tại (${currentUser.email}) đang ở vai trò ${currentUser.role}. Vui lòng đăng nhập bằng tài khoản OWNER để quản lý cụm sân, sân con và lịch đặt.`
+              : 'Vui lòng đăng nhập bằng tài khoản Chủ sân (OWNER) để truy cập bảng điều khiển quản lý cơ sở.'}
           </p>
           <div className="d-grid gap-2">
             {onOpenAuth && (
@@ -1008,7 +1014,7 @@ export default function OwnerDashboard({
             {onOpenAuth && (
               <button
                 type="button"
-                className="btn btn-outline-success py-2 fw-semibold rounded-3"
+                className="btn btn-brand-outline py-2 fw-semibold rounded-3"
                 onClick={() => onOpenAuth('register-owner')}
               >
                 <i className="bi bi-building-add me-2"></i>Đăng ký trở thành Đối tác Chủ sân
@@ -1016,7 +1022,7 @@ export default function OwnerDashboard({
             )}
             <button
               type="button"
-              className="btn btn-light py-2 text-secondary rounded-3"
+              className="btn btn-light border py-2 text-secondary rounded-3"
               onClick={onBackToHome}
             >
               <i className="bi bi-arrow-left me-2"></i>Quay lại Trang đặt sân
@@ -1031,13 +1037,11 @@ export default function OwnerDashboard({
     <div className="min-vh-100 bg-light d-flex flex-column" style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 2000 }}>
-          <div className="alert alert-success shadow-lg border-0 d-flex align-items-center gap-2 mb-0 py-3 px-4 rounded-3 text-dark">
-            <i className="bi bi-check-circle-fill text-success fs-5"></i>
-            <div>
-              <strong>Kênh Chủ Sân:</strong> {toastMessage}
-            </div>
-            <button type="button" className="btn-close ms-auto" onClick={() => setToastMessage('')}></button>
+        <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 2000, maxWidth: '400px' }}>
+          <div className="bg-white border shadow-sm rounded-3 py-2 px-3 d-flex align-items-center gap-2 small text-dark">
+            <i className="bi bi-check-circle-fill text-success flex-shrink-0"></i>
+            <div className="flex-grow-1">{toastMessage}</div>
+            <button type="button" className="btn-close ms-2" style={{ fontSize: '0.68rem' }} aria-label="Đóng" onClick={() => setToastMessage('')}></button>
           </div>
         </div>
       )}
@@ -1045,37 +1049,35 @@ export default function OwnerDashboard({
       {/* ========================================================
           1. OWNER TOPBAR HEADER
           ======================================================== */}
-      <header className="bg-white border-bottom sticky-top shadow-sm py-2" style={{ zIndex: 1020 }}>
+      <header className="bg-white border-bottom sticky-top py-2" style={{ zIndex: 1020 }}>
         <div className="container-fluid px-3 px-lg-4">
           <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
 
-            {/* Logo & Portal Badge */}
-            <div className="d-flex align-items-center gap-3">
+            {/* Logo & Portal Subtitle */}
+            <div className="d-flex align-items-center gap-2">
               <a
                 href="#home"
                 onClick={(e) => { e.preventDefault(); onBackToHome(); }}
                 className="text-decoration-none d-flex align-items-center gap-2"
               >
-                <div className="d-flex align-items-center justify-content-center bg-brand-light rounded-circle" style={{ width: '36px', height: '36px' }}>
-                  <i className="bi bi-trophy-fill text-brand fs-5"></i>
-                </div>
-                <span className="fw-bold fs-4 text-brand-dark tracking-tight">SportsBooking</span>
+                <span className="brand-mark-box">
+                  <i className="bi bi-trophy-fill"></i>
+                </span>
+                <span className="fw-bold fs-5 text-brand-dark">SportsBooking</span>
               </a>
 
-              <span className="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 rounded-pill small fw-semibold d-flex align-items-center gap-1">
-                <i className="bi bi-buildings-fill"></i>
-                <span>KÊNH QUẢN LÝ CHỦ SÂN</span>
-              </span>
+              <span className="text-muted d-none d-sm-inline">|</span>
+              <span className="text-muted small fw-semibold d-none d-sm-inline">Kênh Chủ Sân</span>
             </div>
 
             {/* Facility Selector Dropdown */}
             <div className="d-flex align-items-center gap-2 flex-grow-1 flex-md-grow-0 justify-content-center">
-              <div className="input-group input-group-sm shadow-sm" style={{ maxWidth: '420px' }}>
-                <span className="input-group-text bg-light text-brand fw-bold border-end-0">
-                  <i className="bi bi-geo-alt-fill me-1"></i> Cụm sân:
+              <div className="input-group input-group-sm" style={{ maxWidth: '400px' }}>
+                <span className="input-group-text bg-light text-secondary fw-medium">
+                  <i className="bi bi-geo-alt me-1"></i>Cụm sân
                 </span>
                 <select
-                  className="form-select fw-semibold border-start-0 bg-white"
+                  className="form-select fw-semibold bg-white"
                   value={selectedFacilityId || ''}
                   disabled={facilitiesLoading || facilities.length === 0}
                   onChange={(e) => handleSelectFacility(e.target.value)}
@@ -1092,7 +1094,7 @@ export default function OwnerDashboard({
                 <button
                   className="btn btn-outline-success"
                   type="button"
-                  title="Thêm cụm sân / cơ sở mới"
+                  title="Thêm cụm sân mới"
                   onClick={() => setShowFacilityModal(true)}
                 >
                   <i className="bi bi-plus-lg"></i>
@@ -1100,7 +1102,7 @@ export default function OwnerDashboard({
               </div>
             </div>
 
-            {/* Account Icon Options (Facebook-style compact trigger) */}
+            {/* Account Icon Options */}
             <div className="d-flex align-items-center gap-2 ms-auto">
               <AccountMenu
                 currentUser={currentUser}
@@ -1121,7 +1123,7 @@ export default function OwnerDashboard({
       {/* Nếu chủ sân chưa có cụm sân nào */}
       {!facilitiesLoading && !facilitiesError && !currentFacility ? (
         <main className="flex-grow-1 d-flex align-items-center justify-content-center p-4">
-          <div className="card border-0 shadow-sm rounded-4 p-5 text-center bg-white" style={{ maxWidth: '520px' }}>
+          <div className="editorial-panel-card p-5 text-center bg-white" style={{ maxWidth: '480px' }}>
             <i className="bi bi-building-add text-brand fs-1 mb-3"></i>
             <h5 className="fw-bold text-dark">Bạn chưa có cụm sân nào</h5>
             <p className="text-muted small mb-4">
@@ -1129,7 +1131,7 @@ export default function OwnerDashboard({
             </p>
             <button
               type="button"
-              className="btn btn-brand rounded-pill px-4"
+              className="btn btn-brand rounded-3 px-4"
               onClick={() => setShowFacilityModal(true)}
             >
               <i className="bi bi-plus-circle me-2"></i>Tạo cụm sân ngay
@@ -1139,10 +1141,10 @@ export default function OwnerDashboard({
       ) : (
         <>
           {/* ========================================================
-              2. FACILITY HERO BANNER & SUB-NAV TABS
+              2. FACILITY HEADER & SUB-NAV TABS
               ======================================================== */}
           {currentFacility && (
-            <section className="bg-white border-bottom shadow-xs pt-3 pb-0">
+            <section className="owner-hero-band pt-3 pb-0">
               <div className="container-fluid px-3 px-lg-4">
                 <div className="row align-items-center mb-3 g-3">
                   <div className="col-lg-8">
@@ -1151,29 +1153,35 @@ export default function OwnerDashboard({
                         <img
                           src={currentFacility.coverImageUrl}
                           alt={currentFacility.name}
-                          className="rounded-3 object-fit-cover shadow-sm d-none d-sm-block flex-shrink-0"
-                          style={{ width: '80px', height: '80px' }}
+                          className="rounded-3 border object-fit-cover d-none d-sm-block flex-shrink-0"
+                          style={{ width: '78px', height: '78px' }}
                           onError={() => setHeaderImgError(true)}
                         />
                       ) : (
                         <div
-                          className="court-placeholder-box rounded-3 shadow-sm d-none d-sm-flex flex-shrink-0 p-1"
-                          style={{ width: '80px', height: '80px' }}
+                          className="court-placeholder-box rounded-3 border d-none d-sm-flex flex-shrink-0 p-1"
+                          style={{ width: '78px', height: '78px' }}
                         >
                           <i className="bi bi-building fs-4"></i>
                         </div>
                       )}
                       <div>
+                        <div className="hero-eyebrow mb-1">
+                          <span className="hero-eyebrow-dot"></span>
+                          <span>CỤM SÂN ĐANG VẬN HÀNH</span>
+                        </div>
                         <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
-                          <h4 className="fw-bold text-brand-dark mb-0">{currentFacility.name}</h4>
-                          <span className="badge bg-success-subtle text-success border border-success-subtle">
+                          <h4 className="fw-bold text-dark mb-0" style={{ letterSpacing: '-0.02em' }}>
+                            {currentFacility.name}
+                          </h4>
+                          <span className="badge rounded-pill bg-success-subtle text-success border border-success-subtle">
                             {currentFacility.category}
                           </span>
-                          <span className={`badge ${currentFacility.operationalStatus === 'ACTIVE' ? 'bg-primary-subtle text-primary' : 'bg-secondary-subtle text-secondary'} border`}>
+                          <span className={`badge rounded-pill ${currentFacility.operationalStatus === 'ACTIVE' ? 'bg-primary-subtle text-primary' : 'bg-secondary-subtle text-secondary'} border`}>
                             {currentFacility.operationalStatus === 'ACTIVE' ? 'Đang hoạt động' : 'Tạm ngưng'}
                           </span>
                           {!currentFacility.isVisible && (
-                            <span className="badge bg-warning-subtle text-dark border border-warning-subtle">
+                            <span className="badge rounded-pill bg-warning-subtle text-dark border border-warning-subtle">
                               <i className="bi bi-hourglass-split me-1"></i>Chờ Admin duyệt hiển thị
                             </span>
                           )}
@@ -1204,14 +1212,14 @@ export default function OwnerDashboard({
                   <div className="col-lg-4 text-lg-end">
                     <div className="d-flex align-items-center justify-content-lg-end gap-2 flex-wrap">
                       <button
-                        className="btn btn-outline-success btn-sm rounded-pill fw-semibold shadow-xs"
+                        className="btn btn-brand-outline btn-sm rounded-3 fw-semibold"
                         onClick={() => openWalkInModal()}
                         disabled={activeTimeSlots.length === 0}
                       >
                         <i className="bi bi-person-plus-fill me-1"></i> Đặt tại quầy
                       </button>
                       <button
-                        className="btn btn-brand btn-sm rounded-pill shadow-sm"
+                        className="btn btn-brand btn-sm rounded-3"
                         onClick={() => {
                           setEditingCourt(null);
                           setShowAddCourtModal(true);
@@ -1224,62 +1232,57 @@ export default function OwnerDashboard({
                 </div>
 
                 {/* Navigation Tabs */}
-                <ul className="nav nav-tabs border-bottom-0 gap-2 gap-md-4">
-                  <li className="nav-item">
-                    <button
-                      className={`nav-link pb-3 fw-semibold border-0 bg-transparent text-secondary d-flex align-items-center gap-2 ${activeTab === 'overview' ? 'active text-brand border-bottom border-3 border-success' : ''}`}
-                      onClick={() => setActiveTab('overview')}
-                    >
-                      <i className="bi bi-grid-1x2-fill"></i>
-                      <span>Tổng quan</span>
-                    </button>
-                  </li>
-                  <li className="nav-item">
-                    <button
-                      className={`nav-link pb-3 fw-semibold border-0 bg-transparent text-secondary d-flex align-items-center gap-2 ${activeTab === 'courts' ? 'active text-brand border-bottom border-3 border-success' : ''}`}
-                      onClick={() => setActiveTab('courts')}
-                    >
-                      <i className="bi bi-dribbble"></i>
-                      <span>Quản lý Sân ({currentSubCourts.length})</span>
-                    </button>
-                  </li>
-                  <li className="nav-item">
-                    <button
-                      className={`nav-link pb-3 fw-semibold border-0 bg-transparent text-secondary d-flex align-items-center gap-2 ${activeTab === 'schedule' ? 'active text-brand border-bottom border-3 border-success' : ''}`}
-                      onClick={() => setActiveTab('schedule')}
-                    >
-                      <i className="bi bi-calendar3"></i>
-                      <span>Lịch Đặt & Khung Giờ</span>
-                      {pendingBookingsCount > 0 ? (
-                        <span className="badge rounded-pill bg-warning text-dark fw-bold" style={{ fontSize: '0.68rem' }}>
-                          {pendingBookingsCount} chờ duyệt
-                        </span>
-                      ) : (analytics?.todayBookingsCount || todayBookings.length) > 0 && (
-                        <span className="badge rounded-pill bg-danger" style={{ fontSize: '0.65rem' }}>
-                          {analytics?.todayBookingsCount ?? todayBookings.length}
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                  <li className="nav-item">
-                    <button
-                      className={`nav-link pb-3 fw-semibold border-0 bg-transparent text-secondary d-flex align-items-center gap-2 ${activeTab === 'finance' ? 'active text-brand border-bottom border-3 border-success' : ''}`}
-                      onClick={() => setActiveTab('finance')}
-                    >
-                      <i className="bi bi-cash-stack"></i>
-                      <span>Doanh thu & Đối soát</span>
-                    </button>
-                  </li>
-                  <li className="nav-item">
-                    <button
-                      className={`nav-link pb-3 fw-semibold border-0 bg-transparent text-secondary d-flex align-items-center gap-2 ${activeTab === 'settings' ? 'active text-brand border-bottom border-3 border-success' : ''}`}
-                      onClick={() => setActiveTab('settings')}
-                    >
-                      <i className="bi bi-gear-fill"></i>
-                      <span>Cài đặt Cơ sở</span>
-                    </button>
-                  </li>
-                </ul>
+                <div className="d-flex gap-3 gap-md-4 overflow-x-auto">
+                  <button
+                    type="button"
+                    className={`owner-nav-tab text-nowrap ${activeTab === 'overview' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('overview')}
+                  >
+                    <i className="bi bi-grid-1x2-fill"></i>
+                    <span>Tổng quan</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`owner-nav-tab text-nowrap ${activeTab === 'courts' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('courts')}
+                  >
+                    <i className="bi bi-dribbble"></i>
+                    <span>Quản lý Sân ({currentSubCourts.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`owner-nav-tab text-nowrap ${activeTab === 'schedule' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('schedule')}
+                  >
+                    <i className="bi bi-calendar3"></i>
+                    <span>Lịch Đặt & Khung Giờ</span>
+                    {pendingBookingsCount > 0 ? (
+                      <span className="badge rounded-pill bg-warning text-dark fw-bold" style={{ fontSize: '0.68rem' }}>
+                        {pendingBookingsCount} chờ duyệt
+                      </span>
+                    ) : (analytics?.todayBookingsCount || todayBookings.length) > 0 && (
+                      <span className="badge rounded-pill bg-danger" style={{ fontSize: '0.65rem' }}>
+                        {analytics?.todayBookingsCount ?? todayBookings.length}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className={`owner-nav-tab text-nowrap ${activeTab === 'finance' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('finance')}
+                  >
+                    <i className="bi bi-cash-stack"></i>
+                    <span>Doanh thu & Đối soát</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`owner-nav-tab text-nowrap ${activeTab === 'settings' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('settings')}
+                  >
+                    <i className="bi bi-gear-fill"></i>
+                    <span>Cài đặt Cơ sở</span>
+                  </button>
+                </div>
               </div>
             </section>
           )}
@@ -1302,19 +1305,19 @@ export default function OwnerDashboard({
               {currentFacility && activeTab === 'overview' && (
                 <div>
                   {pendingBookingsCount > 0 && (
-                    <div className="alert alert-warning border border-warning-subtle shadow-sm d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4 rounded-3">
+                    <div className="alert alert-warning border border-warning-subtle d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4 rounded-3">
                       <div className="d-flex align-items-center gap-2">
                         <i className="bi bi-bell-fill fs-5 text-warning-emphasis"></i>
                         <div>
-                          <strong>Có {pendingBookingsCount} yêu cầu đặt sân mới đang chờ bạn xác nhận!</strong>
+                          <strong>Có {pendingBookingsCount} yêu cầu đặt sân mới đang chờ xác nhận</strong>
                           <div className="small text-muted">
-                            Khách hàng đã gửi yêu cầu đặt sân trực tuyến. Hãy kiểm tra và bấm "Xác nhận" để chốt lịch chơi.
+                            Kiểm tra và bấm Xác nhận để chốt lịch chơi cho khách hàng.
                           </div>
                         </div>
                       </div>
                       <button
                         type="button"
-                        className="btn btn-warning btn-sm fw-bold rounded-pill px-3"
+                        className="btn btn-warning btn-sm fw-semibold rounded-3 px-3"
                         onClick={() => {
                           setBookingStatusFilter('PENDING');
                           setActiveTab('schedule');
@@ -1328,12 +1331,12 @@ export default function OwnerDashboard({
                   {/* 4 KPI Cards */}
                   <div className="row g-3 mb-4">
                     <div className="col-xl-3 col-sm-6">
-                      <div className="card border-0 shadow-sm rounded-3 h-100 p-3 bg-white">
+                      <div className="owner-kpi-card h-100 p-3">
                         <div className="d-flex align-items-center justify-content-between mb-2">
-                          <span className="text-muted small fw-semibold">DOANH THU THÁNG</span>
-                          <div className="bg-success-subtle p-2 rounded-circle text-success">
-                            <i className="bi bi-currency-dollar fs-5"></i>
-                          </div>
+                          <span className="text-muted small fw-semibold">Doanh thu tháng</span>
+                          <span className="owner-kpi-icon">
+                            <i className="bi bi-currency-dollar"></i>
+                          </span>
                         </div>
                         <h3 className="fw-bold text-brand-dark mb-1">
                           {analyticsLoading ? '...' : `${Number(analytics?.monthlyRevenue || 0).toLocaleString('vi-VN')}đ`}
@@ -1345,29 +1348,29 @@ export default function OwnerDashboard({
                     </div>
 
                     <div className="col-xl-3 col-sm-6">
-                      <div className="card border-0 shadow-sm rounded-3 h-100 p-3 bg-white">
+                      <div className="owner-kpi-card h-100 p-3">
                         <div className="d-flex align-items-center justify-content-between mb-2">
-                          <span className="text-muted small fw-semibold">TỔNG LƯỢT ĐẶT SÂN</span>
-                          <div className="bg-primary-subtle p-2 rounded-circle text-primary">
-                            <i className="bi bi-calendar2-check-fill fs-5"></i>
-                          </div>
+                          <span className="text-muted small fw-semibold">Tổng lượt đặt sân</span>
+                          <span className="owner-kpi-icon">
+                            <i className="bi bi-calendar2-check"></i>
+                          </span>
                         </div>
                         <h3 className="fw-bold text-dark mb-1">
                           {analytics?.totalBookings ?? bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'COMPLETED').length} lượt
                         </h3>
                         <div className="small text-muted d-flex align-items-center gap-1">
-                          <span className="text-success fw-bold">+{analytics?.todayBookingsCount ?? todayBookings.length} hôm nay</span> • {analytics?.checkedInCount ?? 0} đã check-in
+                          <span className="text-success fw-semibold">+{analytics?.todayBookingsCount ?? todayBookings.length} hôm nay</span> • {analytics?.checkedInCount ?? 0} đã check-in
                         </div>
                       </div>
                     </div>
 
                     <div className="col-xl-3 col-sm-6">
-                      <div className="card border-0 shadow-sm rounded-3 h-100 p-3 bg-white">
+                      <div className="owner-kpi-card h-100 p-3">
                         <div className="d-flex align-items-center justify-content-between mb-2">
-                          <span className="text-muted small fw-semibold">CÔNG SUẤT NGÀY CHỌN</span>
-                          <div className="bg-warning-subtle p-2 rounded-circle text-warning">
-                            <i className="bi bi-speedometer2 fs-5"></i>
-                          </div>
+                          <span className="text-muted small fw-semibold">Công suất ngày chọn</span>
+                          <span className="owner-kpi-icon">
+                            <i className="bi bi-speedometer2"></i>
+                          </span>
                         </div>
                         <h3 className="fw-bold text-dark mb-1">
                           {analytics?.occupancyRate ?? 0}%
@@ -1379,12 +1382,12 @@ export default function OwnerDashboard({
                     </div>
 
                     <div className="col-xl-3 col-sm-6">
-                      <div className="card border-0 shadow-sm rounded-3 h-100 p-3 bg-white">
+                      <div className="owner-kpi-card h-100 p-3">
                         <div className="d-flex align-items-center justify-content-between mb-2">
-                          <span className="text-muted small fw-semibold">SÂN HOẠT ĐỘNG</span>
-                          <div className="bg-info-subtle p-2 rounded-circle text-info">
-                            <i className="bi bi-check2-circle fs-5"></i>
-                          </div>
+                          <span className="text-muted small fw-semibold">Sân hoạt động</span>
+                          <span className="owner-kpi-icon">
+                            <i className="bi bi-check2-circle"></i>
+                          </span>
                         </div>
                         <h3 className="fw-bold text-dark mb-1">
                           {activeCourtsCount} / {currentSubCourts.length} sân
@@ -1403,15 +1406,15 @@ export default function OwnerDashboard({
                   {/* Chart & Quick Actions */}
                   <div className="row g-4 mb-4">
                     <div className="col-lg-7">
-                      <div className="card border-0 shadow-sm rounded-3 p-4 bg-white h-100">
+                      <div className="editorial-panel-card p-4 h-100">
                         <div className="d-flex align-items-center justify-content-between mb-3">
                           <div>
-                            <h6 className="fw-bold text-dark mb-0">Biểu đồ doanh thu 7 ngày (PostgreSQL)</h6>
+                            <h6 className="fw-bold text-dark mb-0">Doanh thu 7 ngày gần nhất</h6>
                             <span className="text-muted small">Tính đến ngày: {selectedScheduleDate}</span>
                           </div>
                           <button
                             type="button"
-                            className="btn btn-sm btn-outline-secondary"
+                            className="btn btn-sm btn-outline-secondary rounded-3"
                             onClick={() => refreshOperationalData(currentFacility.id, selectedScheduleDate)}
                           >
                             <i className="bi bi-arrow-clockwise me-1"></i>Làm mới
@@ -1435,8 +1438,7 @@ export default function OwnerDashboard({
                                   className="w-50 rounded-top transition-all"
                                   style={{
                                     height: `${heightPct}%`,
-                                    backgroundColor: isPeak ? '#0b4d3c' : (bar.revenue > 0 ? '#10b981' : '#e5e7eb'),
-                                    boxShadow: isPeak ? '0 4px 10px rgba(11, 77, 60, 0.35)' : 'none'
+                                    backgroundColor: isPeak ? '#0b4d3c' : (bar.revenue > 0 ? '#10b981' : '#e5e7eb')
                                   }}
                                 ></div>
                                 <span className={`small mt-2 ${isPeak ? 'fw-bold text-brand' : 'text-muted'}`}>{bar.label}</span>
@@ -1453,7 +1455,7 @@ export default function OwnerDashboard({
                     </div>
 
                     <div className="col-lg-5">
-                      <div className="card border-0 shadow-sm rounded-3 p-4 bg-white h-100 d-flex flex-column">
+                      <div className="editorial-panel-card p-4 h-100 d-flex flex-column">
                         <h6 className="fw-bold text-dark mb-3">
                           {analytics?.bySport?.length > 0 ? 'Phân bổ doanh thu theo bộ môn' : 'Phân bổ sân theo bộ môn'}
                         </h6>
@@ -1467,7 +1469,7 @@ export default function OwnerDashboard({
                                   <span className="text-brand">{item.revenue.toLocaleString('vi-VN')}đ ({item.ratio}%)</span>
                                 </div>
                                 <div className="progress" style={{ height: '8px' }}>
-                                  <div className="progress-bar bg-success" role="progressbar" style={{ width: `${item.ratio}%` }}></div>
+                                  <div className="progress-bar" role="progressbar" style={{ width: `${item.ratio}%`, backgroundColor: '#0b4d3c' }}></div>
                                 </div>
                               </div>
                             ))
@@ -1482,7 +1484,7 @@ export default function OwnerDashboard({
                                     <span className="text-brand">{count} sân ({ratio}%)</span>
                                   </div>
                                   <div className="progress" style={{ height: '8px' }}>
-                                    <div className="progress-bar bg-success" role="progressbar" style={{ width: `${ratio}%` }}></div>
+                                    <div className="progress-bar" role="progressbar" style={{ width: `${ratio}%`, backgroundColor: '#0b4d3c' }}></div>
                                   </div>
                                 </div>
                               );
@@ -1532,7 +1534,7 @@ export default function OwnerDashboard({
                   </div>
 
                   {/* Bookings Today Table */}
-                  <div className="card border-0 shadow-sm rounded-3 p-4 bg-white">
+                  <div className="editorial-panel-card p-4">
                     <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
                       <div>
                         <h6 className="fw-bold text-dark mb-0">Lượt đặt sân hôm nay ({todayYmd})</h6>
@@ -1576,13 +1578,13 @@ export default function OwnerDashboard({
                               const badge = getBookingBadge(b.status);
                               return (
                                 <tr key={b.id}>
-                                  <td><span className="fw-bold text-dark">{b.id}</span></td>
+                                  <td><span className="fw-bold text-brand-dark">{b.id}</span></td>
                                   <td>
                                     <div className="fw-semibold text-dark">{b.customerName}</div>
                                     <span className="text-muted small">{b.customerPhone}</span>
                                   </td>
                                   <td><span className="badge bg-light text-dark border me-1">{b.subCourtName}</span></td>
-                                  <td><span className="badge bg-success-subtle text-success fw-bold px-2 py-1">{b.timeSlot}</span></td>
+                                  <td><span className="bg-brand-light text-brand-dark fw-semibold px-2 py-1 rounded-2 small">{b.timeSlot}</span></td>
                                   <td><strong className="text-brand-dark">{b.totalPrice?.toLocaleString('vi-VN')}đ</strong></td>
                                   <td><span className="small text-muted">{b.paymentMethod}</span></td>
                                   <td><span className={`badge rounded-pill ${badge.cls}`}>{badge.label}</span></td>
@@ -1642,8 +1644,8 @@ export default function OwnerDashboard({
                 <div>
                   <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
                     <div>
-                      <h5 className="fw-bold text-brand-dark mb-1">
-                        Danh Sách Sân Con ({currentFacility.name})
+                      <h5 className="fw-bold text-dark mb-1">
+                        Danh sách sân con ({currentFacility.name})
                       </h5>
                       <p className="text-muted small mb-0">
                         Quản lý từng sân thi đấu cụ thể, mặt sân, bảng giá giờ thường / cao điểm và trạng thái đón khách
@@ -1665,7 +1667,7 @@ export default function OwnerDashboard({
 
                       <button
                         type="button"
-                        className="btn btn-outline-success btn-sm d-flex align-items-center gap-1 rounded-3 shadow-xs"
+                        className="btn btn-outline-success btn-sm d-flex align-items-center gap-1 rounded-3"
                         onClick={() => openTimeSlotsModal('single')}
                       >
                         <i className="bi bi-clock-history"></i>
@@ -1673,7 +1675,7 @@ export default function OwnerDashboard({
                       </button>
 
                       <button
-                        className="btn btn-brand btn-sm d-flex align-items-center gap-1 rounded-3 shadow-sm"
+                        className="btn btn-brand btn-sm d-flex align-items-center gap-1 rounded-3"
                         onClick={() => {
                           setEditingCourt(null);
                           setShowAddCourtModal(true);
@@ -1685,7 +1687,7 @@ export default function OwnerDashboard({
                     </div>
                   </div>
 
-                  {courtsLoading && <div className="alert alert-info">Đang tải danh sách sân từ PostgreSQL...</div>}
+                  {courtsLoading && <div className="alert alert-info py-2 small">Đang tải danh sách sân...</div>}
                   {courtsError && (
                     <div className="alert alert-danger d-flex align-items-center justify-content-between">
                       <span>{courtsError}</span>
@@ -1696,11 +1698,11 @@ export default function OwnerDashboard({
                   <div className="row g-4">
                     {!courtsLoading && filteredSubCourts.length === 0 ? (
                       <div className="col-12 text-center py-5">
-                        <div className="bg-white p-5 rounded-3 shadow-sm">
+                        <div className="editorial-panel-card p-5">
                           <i className="bi bi-dribbble text-muted fs-1 mb-2 d-block"></i>
                           <h6>Chưa có sân con nào thuộc cụm sân hoặc phù hợp bộ lọc.</h6>
                           <button
-                            className="btn btn-outline-success btn-sm mt-2"
+                            className="btn btn-outline-success btn-sm rounded-3 mt-2"
                             onClick={() => {
                               setEditingCourt(null);
                               setShowAddCourtModal(true);
@@ -1713,13 +1715,13 @@ export default function OwnerDashboard({
                     ) : (
                       filteredSubCourts.map((court) => (
                         <div key={court.id} className="col-lg-4 col-md-6">
-                          <div className="card h-100 border-0 shadow-sm rounded-3 overflow-hidden bg-white">
-                            <div className="position-relative" style={{ height: '170px' }}>
+                          <div className="court-card h-100 d-flex flex-column">
+                            <div className="court-card-img-wrapper" style={{ height: '175px' }}>
                               {court.imageUrl && !failedCourtImages[court.id] ? (
                                 <img
                                   src={court.imageUrl}
                                   alt={court.name}
-                                  className="w-100 h-100 object-fit-cover"
+                                  className="court-card-img"
                                   onError={() => setFailedCourtImages(prev => ({ ...prev, [court.id]: true }))}
                                 />
                               ) : (
@@ -1729,20 +1731,20 @@ export default function OwnerDashboard({
                                 </div>
                               )}
                               <div className="position-absolute top-0 start-0 m-2">
-                                <span className="badge bg-dark bg-opacity-75 text-uppercase">
-                                  {court.sportType || 'THỂ THAO'}
+                                <span className="court-category-pill">
+                                  {court.sportType || 'Thể thao'}
                                 </span>
                               </div>
                               <div className="position-absolute top-0 end-0 m-2 d-flex gap-1">
                                 {!court.isVisible && (
-                                  <span className="badge bg-secondary shadow-sm">Ẩn</span>
+                                  <span className="badge rounded-pill bg-secondary">Ẩn</span>
                                 )}
-                                <span className={`badge ${
+                                <span className={`badge rounded-pill ${
                                   court.status === 'ACTIVE' ? 'bg-success' :
                                   court.status === 'CLOSED' ? 'bg-danger' : 'bg-warning text-dark'
-                                } shadow-sm`}>
-                                  {court.status === 'ACTIVE' ? '🟢 Đang đón khách' :
-                                   court.status === 'CLOSED' ? '🔴 Đã đóng' : '🟡 Đang bảo trì'}
+                                }`}>
+                                  {court.status === 'ACTIVE' ? 'Đang mở' :
+                                   court.status === 'CLOSED' ? 'Đã đóng' : 'Bảo trì'}
                                 </span>
                               </div>
                             </div>
@@ -1756,20 +1758,20 @@ export default function OwnerDashboard({
                                 <i className="bi bi-shield-check me-1 text-success"></i> {court.surfaceType || 'Mặt sân chuẩn thi đấu'}
                               </div>
 
-                              <div className="bg-light p-2 rounded-2 mb-3">
+                              <div className="price-highlight-box p-2 mb-3">
                                 <div className="d-flex justify-content-between small">
                                   <span className="text-muted">Giờ thường:</span>
                                   <strong className="text-dark">{court.priceNormal.toLocaleString('vi-VN')}đ /h</strong>
                                 </div>
                                 <div className="d-flex justify-content-between small">
                                   <span className="text-muted">Giờ vàng (17h-21h):</span>
-                                  <strong className="text-brand">{court.pricePeak.toLocaleString('vi-VN')}đ /h</strong>
+                                  <strong className="text-brand-dark">{court.pricePeak.toLocaleString('vi-VN')}đ /h</strong>
                                 </div>
                               </div>
 
                               <div className="d-flex flex-wrap gap-1 mb-3">
                                 {court.amenities && court.amenities.map((a, i) => (
-                                  <span key={i} className="badge bg-light text-secondary border fw-normal" style={{ fontSize: '0.7rem' }}>
+                                  <span key={i} className="amenity-chip" style={{ fontSize: '0.7rem' }}>
                                     {a}
                                   </span>
                                 ))}
@@ -1778,7 +1780,7 @@ export default function OwnerDashboard({
                               <div className="mt-auto pt-2 border-top d-flex align-items-center justify-content-between">
                                 <button
                                   type="button"
-                                  className={`btn btn-sm ${court.status === 'ACTIVE' ? 'btn-outline-warning' : 'btn-outline-success'} rounded-2`}
+                                  className={`btn btn-sm ${court.status === 'ACTIVE' ? 'btn-outline-warning' : 'btn-outline-success'} rounded-3`}
                                   onClick={() => handleToggleCourtStatus(court.id)}
                                 >
                                   {court.status === 'ACTIVE' ? 'Khóa bảo trì' : 'Mở lại sân'}
@@ -1814,15 +1816,15 @@ export default function OwnerDashboard({
               )}
 
               {/* ==========================================
-                  TAB 3: LỊCH ĐẶT & BẢNG KHUNG GIỜ (REAL POSTGRESQL MATRIX & BLOCKS)
+                  TAB 3: LỊCH ĐẶT & BẢNG KHUNG GIỜ
                   ========================================== */}
               {currentFacility && activeTab === 'schedule' && (
                 <div>
-                  <div className="card border-0 shadow-sm rounded-3 p-3 bg-white mb-4">
+                  <div className="editorial-panel-card p-3 p-md-4 mb-4">
                     <div className="row align-items-center g-3">
                       <div className="col-md-4">
                         <label className="form-label small text-muted fw-semibold mb-1">
-                          <i className="bi bi-calendar-date me-1"></i> Chọn ngày xem lịch:
+                          <i className="bi bi-calendar-date me-1 text-brand"></i> Chọn ngày xem lịch:
                         </label>
                         <div className="d-flex align-items-center gap-2">
                           <input
@@ -1833,7 +1835,7 @@ export default function OwnerDashboard({
                           />
                           <button
                             type="button"
-                            className="btn btn-outline-secondary btn-sm text-nowrap"
+                            className="btn btn-outline-secondary btn-sm text-nowrap rounded-3"
                             onClick={() => setSelectedScheduleDate(formatLocalYMD())}
                           >
                             Hôm nay
@@ -1870,20 +1872,20 @@ export default function OwnerDashboard({
                       <div className="col-md-4 text-md-end d-flex justify-content-md-end gap-2 flex-wrap">
                         <button
                           type="button"
-                          className="btn btn-outline-primary btn-sm rounded-pill shadow-xs"
+                          className="btn btn-outline-secondary btn-sm rounded-3"
                           onClick={() => openTimeSlotsModal('single')}
                         >
-                          <i className="bi bi-clock-history me-1"></i> Thiết lập khung giờ ({activeTimeSlots.length})
+                          <i className="bi bi-clock-history me-1 text-brand"></i> Khung giờ ({activeTimeSlots.length})
                         </button>
                         <button
-                          className="btn btn-outline-danger btn-sm rounded-pill shadow-xs"
+                          className="btn btn-outline-danger btn-sm rounded-3"
                           onClick={() => openBlockModal()}
                           disabled={activeTimeSlots.length === 0}
                         >
                           <i className="bi bi-lock-fill me-1"></i> Khóa khung giờ
                         </button>
                         <button
-                          className="btn btn-brand btn-sm rounded-pill shadow-xs"
+                          className="btn btn-brand btn-sm rounded-3"
                           onClick={() => openWalkInModal()}
                           disabled={activeTimeSlots.length === 0}
                         >
@@ -1894,19 +1896,23 @@ export default function OwnerDashboard({
                   </div>
 
                   {/* Time-Slot Grid Matrix */}
-                  <div className="card border-0 shadow-sm rounded-3 bg-white mb-4 overflow-hidden">
-                    <div className="card-header bg-light py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                  <div className="editorial-panel-card mb-4 overflow-hidden">
+                    <div className="bg-white px-4 py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
                       <div>
+                        <span className="hero-eyebrow mb-1">
+                          <span className="hero-eyebrow-dot"></span>
+                          MA TRẬN KHUNG GIỜ
+                        </span>
                         <h6 className="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
                           <i className="bi bi-grid-3x3-gap-fill text-brand"></i>
-                          <span>Ma trận khung giờ: {currentFacility.name} (Ngày: {selectedScheduleDate})</span>
+                          <span>{currentFacility.name} · Ngày {selectedScheduleDate}</span>
                         </h6>
                         <span className="text-muted small">Bấm "+ Đặt" để nhận khách tại quầy hoặc bấm biểu tượng ổ khóa để khóa/mở khung giờ</span>
                       </div>
-                      {scheduleLoading && <span className="badge bg-info-subtle text-info">Đang đồng bộ lịch...</span>}
+                      {scheduleLoading && <span className="badge bg-info-subtle text-info rounded-pill px-3 py-2">Đang đồng bộ lịch...</span>}
                     </div>
 
-                    <div className="table-responsive p-3">
+                    <div className="table-responsive p-3 p-md-4">
                       <table className="table table-bordered text-center align-middle mb-0" style={{ minWidth: '720px' }}>
                         <thead className="table-light">
                           <tr>
@@ -1932,7 +1938,7 @@ export default function OwnerDashboard({
                                     <span>Cụm sân chưa có khung giờ hoạt động nào.</span>
                                     <button
                                       type="button"
-                                      className="btn btn-sm btn-brand rounded-pill px-3"
+                                      className="btn btn-sm btn-brand rounded-3 px-3"
                                       onClick={() => openTimeSlotsModal('batch')}
                                     >
                                       <i className="bi bi-clock-history me-1"></i> Thiết lập khung giờ ngay
@@ -1948,7 +1954,10 @@ export default function OwnerDashboard({
                             return (
                               <tr key={slot.slotId}>
                                 <td className="fw-semibold text-secondary small bg-light text-nowrap">
-                                  <i className="bi bi-clock me-1 text-muted"></i>{slot.label} {slot.isPeak ? '⭐' : ''}
+                                  <i className="bi bi-clock me-1 text-muted"></i>{slot.label}
+                                  {slot.isPeak && (
+                                    <i className="bi bi-star-fill text-warning ms-1" style={{ fontSize: '0.68rem' }} title="Giờ vàng"></i>
+                                  )}
                                 </td>
                                 {currentSubCourts.map(court => {
                                   if (court.status !== 'ACTIVE') {
@@ -1975,7 +1984,7 @@ export default function OwnerDashboard({
                                         title={`Bấm để xem chi tiết đơn: ${bookingMatch.customerName}`}
                                         style={{ cursor: 'pointer' }}
                                       >
-                                        <div className={`p-2 rounded shadow-xs text-start ${
+                                        <div className={`p-2 rounded text-start ${
                                           isDone
                                             ? 'bg-success text-white'
                                             : isPending
@@ -1984,7 +1993,7 @@ export default function OwnerDashboard({
                                         }`}>
                                           <div className="fw-bold small text-truncate">{bookingMatch.customerName}</div>
                                           <div style={{ fontSize: '0.68rem', opacity: 0.92 }}>
-                                            {isDone ? '✅ Đã Check-in' : isPending ? '⏳ Chờ xác nhận' : '🔵 Đã xác nhận'}
+                                            {isDone ? 'Đã Check-in' : isPending ? 'Chờ xác nhận' : 'Đã xác nhận'}
                                           </div>
                                         </div>
                                       </td>
@@ -2002,7 +2011,7 @@ export default function OwnerDashboard({
                                       <td key={court.id} className="p-1 bg-danger-subtle">
                                         <div className="d-flex align-items-center justify-content-between gap-1 px-2 py-1 rounded border border-danger-subtle bg-white">
                                           <span className="text-danger fw-semibold text-truncate" style={{ fontSize: '0.72rem', maxWidth: '110px' }} title={blockMatch.reason}>
-                                            🔒 {blockMatch.reason}
+                                            <i className="bi bi-lock-fill me-1"></i>{blockMatch.reason}
                                           </span>
                                           <button
                                             type="button"
@@ -2059,12 +2068,18 @@ export default function OwnerDashboard({
                   </div>
 
                   {/* Full Bookings List Table */}
-                  <div className="card border-0 shadow-sm rounded-3 p-4 bg-white">
-                    <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                      <h6 className="fw-bold text-dark mb-0">
-                        Toàn bộ đơn đặt sân tại {currentFacility.name} ({filteredBookingsList.length})
-                      </h6>
-                      <div className="btn-group btn-group-sm flex-wrap">
+                  <div className="editorial-panel-card p-4">
+                    <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
+                      <div>
+                        <span className="hero-eyebrow mb-1">
+                          <span className="hero-eyebrow-dot"></span>
+                          DANH SÁCH ĐƠN ĐẶT
+                        </span>
+                        <h6 className="fw-bold text-dark mb-0">
+                          Toàn bộ đơn đặt sân tại {currentFacility.name} ({filteredBookingsList.length})
+                        </h6>
+                      </div>
+                      <div className="d-flex flex-wrap gap-2">
                         {[
                           { key: 'ALL', label: 'Tất cả' },
                           { key: 'PENDING', label: `Chờ xác nhận (${pendingBookingsCount})` },
@@ -2075,7 +2090,7 @@ export default function OwnerDashboard({
                           <button
                             key={tab.key}
                             type="button"
-                            className={`btn ${bookingStatusFilter === tab.key ? 'btn-brand' : 'btn-outline-secondary'}`}
+                            className={`sport-filter-pill ${bookingStatusFilter === tab.key ? 'active' : ''}`}
                             onClick={() => setBookingStatusFilter(tab.key)}
                           >
                             {tab.label}
@@ -2084,7 +2099,7 @@ export default function OwnerDashboard({
                       </div>
                     </div>
 
-                    {bookingsError && <div className="alert alert-danger py-2 small">{bookingsError}</div>}
+                    {bookingsError && <div className="alert alert-danger py-2 small rounded-3">{bookingsError}</div>}
 
                     <div className="table-responsive">
                       <table className="table table-hover align-middle mb-0">
@@ -2119,7 +2134,11 @@ export default function OwnerDashboard({
                                   <span className="small text-muted">{b.customerPhone}</span>
                                 </td>
                                 <td className="small">{b.subCourtName}</td>
-                                <td><span className="badge bg-light text-dark border">{b.timeSlot}</span></td>
+                                <td>
+                                  <span className="bg-brand-light text-brand-dark px-2 py-1 rounded-2 fw-semibold small text-nowrap">
+                                    {b.timeSlot}
+                                  </span>
+                                </td>
                                 <td><strong className="text-brand-dark">{b.totalPrice?.toLocaleString('vi-VN')}đ</strong></td>
                                 <td className="small text-muted">{b.paymentMethod}</td>
                                 <td><span className={`badge rounded-pill ${badge.cls}`}>{badge.label}</span></td>
@@ -2172,57 +2191,69 @@ export default function OwnerDashboard({
               )}
 
               {/* ==========================================
-                  TAB 4: DOANH THU & ĐỐI SOÁT (REAL POSTGRESQL DATA)
+                  TAB 4: DOANH THU & ĐỐI SOÁT
                   ========================================== */}
               {currentFacility && activeTab === 'finance' && (
                 <div>
                   <div className="row g-4 mb-4">
                     <div className="col-lg-4">
-                      <div className="card border-0 shadow-sm rounded-3 p-4 bg-white h-100">
-                        <span className="text-muted small fw-semibold">TỔNG THU THÁNG HIỆN TẠI</span>
-                        <h2 className="fw-bold text-brand-dark mt-2 mb-1">
+                      <div
+                        className="rounded-4 p-4 h-100 d-flex flex-column text-white shadow-sm"
+                        style={{ backgroundColor: '#0b4d3c' }}
+                      >
+                        <span className="hero-eyebrow mb-2" style={{ color: '#86efac' }}>
+                          <span className="hero-eyebrow-dot" style={{ backgroundColor: '#86efac' }}></span>
+                          DOANH THU THÁNG HIỆN TẠI
+                        </span>
+                        <h2 className="fw-bold mt-1 mb-1" style={{ color: '#86efac', fontSize: '2rem', letterSpacing: '-0.02em' }}>
                           {Number(analytics?.monthlyRevenue || 0).toLocaleString('vi-VN')}đ
                         </h2>
-                        <p className="text-muted small mb-4">
-                          Ghi nhận từ {analytics?.monthlyBookings || 0} lượt đặt sân hợp lệ trong PostgreSQL
+                        <p className="small mb-4" style={{ color: 'rgba(255, 255, 255, 0.72)' }}>
+                          Ghi nhận từ {analytics?.monthlyBookings || 0} lượt đặt sân hợp lệ
                         </p>
 
-                        <div className="border-top pt-3">
+                        <div className="pt-3" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.14)' }}>
                           <div className="d-flex justify-content-between mb-2 small">
-                            <span className="text-muted">Thanh toán Online / VietQR:</span>
-                            <strong className="text-success">
+                            <span style={{ color: 'rgba(255, 255, 255, 0.78)' }}>Thanh toán Online / VietQR:</span>
+                            <strong style={{ color: '#86efac' }}>
                               {Number(analytics?.monthlyOnlineRevenue || 0).toLocaleString('vi-VN')}đ
                             </strong>
                           </div>
                           <div className="d-flex justify-content-between mb-2 small">
-                            <span className="text-muted">Tiền mặt thu tại quầy:</span>
-                            <strong className="text-primary">
+                            <span style={{ color: 'rgba(255, 255, 255, 0.78)' }}>Tiền mặt thu tại quầy:</span>
+                            <strong className="text-white">
                               {Number(analytics?.monthlyCounterRevenue || 0).toLocaleString('vi-VN')}đ
                             </strong>
                           </div>
-                          <div className="d-flex justify-content-between pt-2 border-top small">
-                            <span className="text-muted">Phí nền tảng dự kiến (5% đơn online):</span>
-                            <span className="text-danger">
+                          <div className="d-flex justify-content-between pt-2 small" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.14)' }}>
+                            <span style={{ color: 'rgba(255, 255, 255, 0.78)' }}>Phí nền tảng dự kiến (5% đơn online):</span>
+                            <span style={{ color: '#fca5a5' }} className="fw-semibold">
                               -{Number(analytics?.platformFeeEstimate || 0).toLocaleString('vi-VN')}đ
                             </span>
                           </div>
                         </div>
 
-                        <div className="mt-auto pt-3 small text-muted">
-                          <i className="bi bi-bank me-1"></i>
-                          Tài khoản đối soát: <strong>{currentFacility.bankName || 'Chưa cấu hình'}</strong>{' '}
+                        <div className="mt-auto pt-3 small" style={{ color: 'rgba(255, 255, 255, 0.76)' }}>
+                          <i className="bi bi-bank me-1" style={{ color: '#86efac' }}></i>
+                          Tài khoản đối soát: <strong className="text-white">{currentFacility.bankName || 'Chưa cấu hình'}</strong>{' '}
                           {currentFacility.bankAccountNo ? `(${currentFacility.bankAccountNo})` : ''}
                         </div>
                       </div>
                     </div>
 
                     <div className="col-lg-8">
-                      <div className="card border-0 shadow-sm rounded-3 p-4 bg-white h-100">
+                      <div className="editorial-panel-card p-4 h-100">
                         <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-                          <h6 className="fw-bold text-dark mb-0">Chi tiết giao dịch phát sinh tại cơ sở</h6>
+                          <div>
+                            <span className="hero-eyebrow mb-1">
+                              <span className="hero-eyebrow-dot"></span>
+                              SỔ GIAO DỊCH
+                            </span>
+                            <h6 className="fw-bold text-dark mb-0">Chi tiết giao dịch phát sinh tại cơ sở</h6>
+                          </div>
                           <button
                             type="button"
-                            className="btn btn-outline-success btn-sm"
+                            className="btn btn-outline-success btn-sm rounded-3 fw-semibold"
                             onClick={handleExportFinanceCsv}
                           >
                             <i className="bi bi-file-earmark-spreadsheet me-1"></i> Xuất báo cáo CSV
@@ -2259,7 +2290,7 @@ export default function OwnerDashboard({
                                     </td>
                                     <td className="small">{b.paymentMethod}</td>
                                     <td>
-                                      <span className={`badge ${b.status === 'COMPLETED' ? 'bg-success' : 'bg-primary'}`}>
+                                      <span className={`badge rounded-pill ${b.status === 'COMPLETED' ? 'bg-success' : 'bg-primary'}`}>
                                         {b.status === 'COMPLETED' ? 'Đã Check-in' : 'Đã xác nhận'}
                                       </span>
                                     </td>
@@ -2279,13 +2310,17 @@ export default function OwnerDashboard({
               )}
 
               {/* ==========================================
-                  TAB 5: CÀI ĐẶT CƠ SỞ (SETTINGS - LIVE POSTGRESQL)
+                  TAB 5: CÀI ĐẶT CƠ SỞ
                   ========================================== */}
               {currentFacility && activeTab === 'settings' && (
                 <div className="row g-4">
                   <div className="col-lg-8">
-                    <div className="card border-0 shadow-sm rounded-3 p-4 bg-white">
-                      <h6 className="fw-bold text-dark mb-3">Hồ sơ Cụm Sân & Chủ Sân Đối Tác (Lưu vào PostgreSQL)</h6>
+                    <div className="editorial-panel-card p-4">
+                      <span className="hero-eyebrow mb-1">
+                        <span className="hero-eyebrow-dot"></span>
+                        HỒ SƠ CƠ SỞ
+                      </span>
+                      <h6 className="fw-bold text-dark mb-3">Hồ sơ Cụm Sân & Chủ Sân Đối Tác</h6>
 
                       <form onSubmit={handleSaveFacilitySettings}>
                         <div className="row g-3 mb-3">
@@ -2461,13 +2496,17 @@ export default function OwnerDashboard({
                   </div>
 
                   <div className="col-lg-4 d-flex flex-column gap-4">
-                    <div className="card border-0 shadow-sm rounded-3 p-4 bg-white text-center">
+                    <div className="editorial-panel-card p-4 text-center">
+                      <span className="hero-eyebrow justify-content-center mb-1">
+                        <span className="hero-eyebrow-dot"></span>
+                        THANH TOÁN VIETQR
+                      </span>
                       <h6 className="fw-bold text-dark mb-3">Mã VietQR Thanh Toán Của Cơ Sở</h6>
-                      <div className="bg-light p-3 rounded-3 mb-3 d-inline-block border">
+                      <div className="p-3 rounded-4 mb-3 d-inline-block border border-success-subtle" style={{ backgroundColor: '#f4f9f6' }}>
                         <img
                           src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`2|99|${settingsForm.bank_account_no}|${settingsForm.bank_name}|0|0|SPORTSBOOKING`)}`}
                           alt="VietQR"
-                          className="img-fluid rounded"
+                          className="img-fluid rounded-3"
                           style={{ maxWidth: '160px' }}
                         />
                       </div>
@@ -2480,13 +2519,17 @@ export default function OwnerDashboard({
                       </p>
                     </div>
 
-                    <div className="card border-0 shadow-sm rounded-3 p-4 bg-white">
+                    <div className="editorial-panel-card p-4">
+                      <span className="hero-eyebrow mb-1">
+                        <span className="hero-eyebrow-dot"></span>
+                        KHUNG GIỜ MỞ CỬA
+                      </span>
                       <div className="d-flex justify-content-between align-items-center mb-2">
                         <h6 className="fw-bold text-dark mb-0">
                           <i className="bi bi-clock-history text-brand me-2"></i>
                           Khung Giờ Hoạt Động
                         </h6>
-                        <span className="badge bg-success-subtle text-success border border-success-subtle">
+                        <span className="badge bg-brand-light text-brand-dark border border-success-subtle rounded-pill">
                           {activeTimeSlots.length} đang mở
                         </span>
                       </div>
@@ -2495,12 +2538,15 @@ export default function OwnerDashboard({
                       </div>
                       <div className="d-flex flex-wrap gap-1 mb-3">
                         {activeTimeSlots.slice(0, 8).map((s) => (
-                          <span key={s.slotId} className="badge bg-light text-dark border fw-normal">
-                            {s.label} {s.isPeak ? '⭐' : ''}
+                          <span key={s.slotId} className="badge bg-light text-dark border fw-normal rounded-2">
+                            {s.label}
+                            {s.isPeak && (
+                              <i className="bi bi-star-fill text-warning ms-1" style={{ fontSize: '0.62rem' }} title="Giờ vàng"></i>
+                            )}
                           </span>
                         ))}
                         {activeTimeSlots.length > 8 && (
-                          <span className="badge bg-secondary-subtle text-secondary fw-normal">
+                          <span className="badge bg-secondary-subtle text-secondary fw-normal rounded-2">
                             +{activeTimeSlots.length - 8} ca khác
                           </span>
                         )}
@@ -3089,7 +3135,7 @@ export default function OwnerDashboard({
       {showTimeSlotsModal && currentFacility && (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1055 }}>
           <div className="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-            <div className="modal-content border-0 shadow-lg rounded-4">
+            <div className="modal-content border shadow rounded-3">
               <div className="modal-header bg-brand-dark text-white">
                 <div>
                   <h5 className="modal-title fw-bold mb-0">
@@ -3097,7 +3143,7 @@ export default function OwnerDashboard({
                     Thiết Lập Khung Giờ Hoạt Động: {currentFacility.name}
                   </h5>
                   <div className="small text-white-50">
-                    Tự tạo khung giờ theo mô hình sân, chọn Giờ vàng (Peak ⭐) và bật/tắt nhận đặt trực tuyến
+                    Tự tạo khung giờ theo mô hình sân, đánh dấu Giờ vàng và bật/tắt nhận đặt trực tuyến
                   </div>
                 </div>
                 <button
@@ -3121,7 +3167,7 @@ export default function OwnerDashboard({
                 <div className="row g-4">
                   {/* Left: Single Slot Form OR Batch Generator */}
                   <div className="col-lg-5">
-                    <div className="card border-0 shadow-sm rounded-3 bg-white p-3 h-100">
+                    <div className="card border rounded-3 bg-white p-3 h-100">
                       <div className="btn-group w-100 mb-3" role="group">
                         <button
                           type="button"
@@ -3216,7 +3262,8 @@ export default function OwnerDashboard({
                                 onChange={(e) => setSlotForm((prev) => ({ ...prev, isPeak: e.target.checked }))}
                               />
                               <label className="form-check-label small fw-semibold" htmlFor="slotIsPeakSwitch">
-                                ⭐ Áp dụng giá Giờ vàng (Peak Price)
+                                <i className="bi bi-star-fill text-warning me-1"></i>
+                                Áp dụng giá Giờ vàng
                               </label>
                             </div>
                             <div className="form-check form-switch mb-0">
@@ -3306,7 +3353,8 @@ export default function OwnerDashboard({
                                 onChange={(e) => setBatchSlotForm((prev) => ({ ...prev, applyPeak: e.target.checked }))}
                               />
                               <label className="form-check-label small fw-semibold" htmlFor="batchPeakToggle">
-                                ⭐ Tự động đánh dấu Giờ vàng trong khoảng:
+                                <i className="bi bi-star-fill text-warning me-1"></i>
+                                Tự động đánh dấu Giờ vàng trong khoảng:
                               </label>
                             </div>
                             {batchSlotForm.applyPeak && (
@@ -3378,7 +3426,7 @@ export default function OwnerDashboard({
 
                   {/* Right: Current Time Slots Table */}
                   <div className="col-lg-7">
-                    <div className="card border-0 shadow-sm rounded-3 bg-white p-3 h-100">
+                    <div className="card border rounded-3 bg-white p-3 h-100">
                       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                         <div>
                           <h6 className="fw-bold text-dark mb-0">
@@ -3402,7 +3450,7 @@ export default function OwnerDashboard({
                       {timeSlotsLoading ? (
                         <div className="text-center py-5 text-muted small">
                           <div className="spinner-border spinner-border-sm text-success me-2"></div>
-                          Đang tải khung giờ từ PostgreSQL...
+                          Đang tải khung giờ...
                         </div>
                       ) : timeSlots.length === 0 ? (
                         <div className="text-center py-5 text-muted small">
@@ -3446,7 +3494,13 @@ export default function OwnerDashboard({
                                       title="Bấm để chuyển đổi Giờ vàng / Giờ thường"
                                       onClick={() => handleToggleSlotField(slot, 'isPeak')}
                                     >
-                                      {slot.isPeak ? '⭐ Giờ vàng' : 'Giờ thường'}
+                                      {slot.isPeak ? (
+                                        <>
+                                          <i className="bi bi-star-fill me-1"></i>Giờ vàng
+                                        </>
+                                      ) : (
+                                        'Giờ thường'
+                                      )}
                                     </button>
                                   </td>
                                   <td>

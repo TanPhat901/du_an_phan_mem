@@ -3,6 +3,7 @@ import Navbar from './components/Navbar';
 import HeroSection from './components/HeroSection';
 import SearchFilterBar from './components/SearchFilterBar';
 import CourtList from './components/CourtList';
+import HowItWorksSection from './components/HowItWorksSection';
 import PartnerBanner from './components/PartnerBanner';
 import Footer from './components/Footer';
 import BookingModal from './components/BookingModal';
@@ -49,6 +50,7 @@ export default function App() {
   }, []);
 
   const [courts, setCourts] = useState([]);
+  const [sportTypes, setSportTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [courtsError, setCourtsError] = useState('');
   const [activeTab, setActiveTab] = useState('home');
@@ -145,6 +147,21 @@ export default function App() {
       setBookingsLoading(false);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('http://localhost:5000/api/courts/sport-types')
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled && json?.success && Array.isArray(json.data)) {
+          setSportTypes(json.data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (currentUser) {
@@ -273,7 +290,7 @@ export default function App() {
             }
           : prev
       );
-      showNotification(nextSaved ? 'Đã thêm vào danh sách sân yêu thích ❤️' : 'Đã bỏ khỏi danh sách sân yêu thích.');
+      showNotification(nextSaved ? 'Đã lưu vào danh sách sân yêu thích.' : 'Đã bỏ khỏi danh sách sân yêu thích.');
     } catch (err) {
       showNotification(err.message);
     }
@@ -331,7 +348,7 @@ export default function App() {
     setBookings((prev) => [newBooking, ...prev.filter((b) => b.id !== newBooking.id)]);
     setAvailabilityRefreshKey((k) => k + 1);
     showNotification(
-      `⏳ Đã gửi yêu cầu đặt sân (${newBooking.id})! Vui lòng chờ chủ sân xác nhận.`
+      `Đã gửi yêu cầu đặt sân (${newBooking.id}). Vui lòng chờ chủ sân xác nhận.`
     );
   };
 
@@ -367,7 +384,7 @@ export default function App() {
     if (userData.role === 'OWNER') {
       setPostAuthReturnCourt(null);
       setPostAuthReturnView(null);
-      showNotification(`🎉 Chào mừng Đối tác Chủ sân ${userData.fullName}! Chuyển đến Giao diện Quản lý Chủ Sân.`);
+      showNotification(`Chào mừng đối tác chủ sân ${userData.fullName}.`);
       setCurrentView('owner-dashboard');
       return;
     }
@@ -418,7 +435,23 @@ export default function App() {
     }
   };
 
-  if (!authReady) return <div className="container py-5">Đang xác minh phiên đăng nhập...</div>;
+  if (!authReady) return <div className="container py-5 small text-muted">Đang tải...</div>;
+
+  const toastBanner = toastMessage ? (
+    <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1100, maxWidth: '400px' }}>
+      <div className="bg-white border shadow-sm rounded-3 py-2 px-3 d-flex align-items-center gap-2 small text-dark">
+        <i className="bi bi-check-circle-fill text-success flex-shrink-0"></i>
+        <div className="flex-grow-1">{toastMessage}</div>
+        <button
+          type="button"
+          className="btn-close ms-2"
+          style={{ fontSize: '0.68rem' }}
+          aria-label="Đóng"
+          onClick={() => setToastMessage('')}
+        ></button>
+      </div>
+    </div>
+  ) : null;
 
   // Personal profile page
   if (currentView === 'profile' && !currentUser) {
@@ -427,17 +460,7 @@ export default function App() {
   if (currentView === 'profile') {
     return (
       <div className="min-vh-100 d-flex flex-column bg-white">
-        {toastMessage && (
-          <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1100 }}>
-            <div className="alert alert-success shadow-lg border-0 d-flex align-items-center gap-2 mb-0 py-3 px-4 rounded-3 text-dark">
-              <i className="bi bi-check-circle-fill text-success fs-5"></i>
-              <div>
-                <strong>Thông báo:</strong> {toastMessage}
-              </div>
-              <button type="button" className="btn-close ms-auto" onClick={() => setToastMessage('')}></button>
-            </div>
-          </div>
-        )}
+        {toastBanner}
         <Navbar
           onOpenAuth={(mode) => openAuthView(mode)}
           onOpenMyBookings={openMyBookingsPage}
@@ -477,17 +500,7 @@ export default function App() {
   if (currentView === 'my-bookings') {
     return (
       <div className="min-vh-100 d-flex flex-column bg-white">
-        {toastMessage && (
-          <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1100 }}>
-            <div className="alert alert-success shadow-lg border-0 d-flex align-items-center gap-2 mb-0 py-3 px-4 rounded-3 text-dark">
-              <i className="bi bi-check-circle-fill text-success fs-5"></i>
-              <div>
-                <strong>Thông báo:</strong> {toastMessage}
-              </div>
-              <button type="button" className="btn-close ms-auto" onClick={() => setToastMessage('')}></button>
-            </div>
-          </div>
-        )}
+        {toastBanner}
         <Navbar
           onOpenAuth={(mode) => openAuthView(mode, null, 'my-bookings')}
           onOpenMyBookings={openMyBookingsPage}
@@ -563,17 +576,7 @@ export default function App() {
     const isDetailFav = favoriteCourtIds.includes(Number(selectedCourtDetail?.id));
     return (
       <div className="min-vh-100 d-flex flex-column bg-white">
-        {toastMessage && (
-          <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1100 }}>
-            <div className="alert alert-success shadow-lg border-0 d-flex align-items-center gap-2 mb-0 py-3 px-4 rounded-3 text-dark">
-              <i className="bi bi-check-circle-fill text-success fs-5"></i>
-              <div>
-                <strong>Thông báo:</strong> {toastMessage}
-              </div>
-              <button type="button" className="btn-close ms-auto" onClick={() => setToastMessage('')}></button>
-            </div>
-          </div>
-        )}
+        {toastBanner}
 
         <Navbar
           onOpenAuth={(mode) => openAuthView(mode, selectedCourtDetail)}
@@ -655,17 +658,7 @@ export default function App() {
   return (
     <div className="min-vh-100 d-flex flex-column bg-white">
       {/* Toast Alert */}
-      {toastMessage && (
-        <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1100 }}>
-          <div className="alert alert-success shadow-lg border-0 d-flex align-items-center gap-2 mb-0 py-3 px-4 rounded-3 text-dark">
-            <i className="bi bi-check-circle-fill text-success fs-5"></i>
-            <div>
-              <strong>Thông báo:</strong> {toastMessage}
-            </div>
-            <button type="button" className="btn-close ms-auto" onClick={() => setToastMessage('')}></button>
-          </div>
-        </div>
-      )}
+      {toastBanner}
 
       {/* Header / Navbar */}
       <Navbar
@@ -702,6 +695,7 @@ export default function App() {
           setPlayDate={setPlayDate}
           selectedCategory={selectedCategory}
           setSelectedCategory={setSelectedCategory}
+          sportTypes={sportTypes}
           maxPrice={maxPrice}
           setMaxPrice={setMaxPrice}
           sortBy={sortBy}
@@ -726,9 +720,15 @@ export default function App() {
           onToggleFavorite={handleToggleFavorite}
           playDate={playDate}
           favoritesOnly={favoritesOnly}
+          sportTypes={sportTypes}
+          selectedCategory={selectedCategory}
+          setSelectedCategory={setSelectedCategory}
           onResetFilters={handleResetFilters}
           onBookNow={(court) => openCourtById(court)}
         />
+
+        {/* Editorial How It Works Band */}
+        <HowItWorksSection />
 
         {/* Partner Section Banner */}
         <PartnerBanner

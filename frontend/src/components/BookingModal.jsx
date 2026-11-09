@@ -101,9 +101,9 @@ export default function BookingModal({
   return (
     <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1055 }}>
       <div className={`modal-dialog modal-dialog-centered ${confirmedBooking ? 'modal-lg' : ''}`}>
-        <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+        <div className="modal-content border rounded-4 shadow-lg overflow-hidden">
           {/* Header with image or brand banner */}
-          <div className="position-relative" style={{ height: '130px', backgroundColor: '#0b4d3c' }}>
+          <div className="position-relative" style={{ height: '136px', backgroundColor: '#0b4d3c' }}>
             {court?.imageUrl && !imgError && (
               <img
                 src={court.imageUrl}
@@ -114,7 +114,16 @@ export default function BookingModal({
               />
             )}
             <div className="position-absolute bottom-0 start-0 p-3 text-white">
-              <span className={`badge ${confirmedBooking ? (confirmedBooking.status === 'PENDING' ? 'bg-warning text-dark' : 'bg-success') : 'bg-success'} mb-1`}>
+              <span
+                className={`badge rounded-pill mb-1 ${
+                  confirmedBooking
+                    ? confirmedBooking.status === 'PENDING'
+                      ? 'bg-warning text-dark'
+                      : 'bg-success'
+                    : 'bg-white text-brand-dark'
+                }`}
+                style={{ fontSize: '0.68rem', letterSpacing: '0.03em' }}
+              >
                 {confirmedBooking
                   ? confirmedBooking.status === 'PENDING'
                     ? 'ĐÃ GỬI YÊU CẦU • CHỜ XÁC NHẬN'
@@ -125,7 +134,7 @@ export default function BookingModal({
                 {court.name}
               </h5>
               {court.subCourtName && (
-                <div className="small text-white-50">{court.subCourtName}</div>
+                <div className="small" style={{ color: '#86efac' }}>{court.subCourtName}</div>
               )}
             </div>
             <button
@@ -305,10 +314,10 @@ export default function BookingModal({
               </div>
 
               {/* Price Breakdown */}
-              <div className="p-3 bg-light rounded-3 mb-4 d-flex justify-content-between align-items-center">
+              <div className="price-highlight-box mb-4 d-flex justify-content-between align-items-center">
                 <div>
                   <span className="small text-muted d-block">Tổng thanh toán (1 slot):</span>
-                  <span className="small text-success fw-semibold">
+                  <span className="small text-brand-dark fw-semibold">
                     {court.subCourtName ? `Sân: ${court.subCourtName}` : 'Chủ sân sẽ xác nhận yêu cầu đặt chỗ'}
                   </span>
                 </div>
@@ -321,11 +330,12 @@ export default function BookingModal({
 
               {/* Submit */}
               <div className="d-flex gap-2">
-                <button type="button" className="btn btn-outline-secondary w-50" onClick={onClose}>
+                <button type="button" className="btn btn-outline-secondary rounded-3 w-50" onClick={onClose}>
                   Hủy bỏ
                 </button>
-                <button type="submit" className="btn btn-brand w-50" disabled={submitting || !selectedSlot}>
-                  {submitting ? 'Đang gửi...' : 'Gửi yêu cầu đặt sân'}
+                <button type="submit" className="btn btn-brand rounded-3 fw-semibold w-50" disabled={submitting || !selectedSlot}>
+                  {submitting ? 'Đang gửi...' : 'Gửi yêu cầu'}
+                  {!submitting && <i className="bi bi-arrow-right ms-1"></i>}
                 </button>
               </div>
             </form>

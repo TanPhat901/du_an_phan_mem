@@ -32,6 +32,7 @@ export default function ProfilePage({
   // Favorites state
   const [favorites, setFavorites] = useState([]);
   const [favLoading, setFavLoading] = useState(false);
+  const [failedFavImgs, setFailedFavImgs] = useState({});
 
   // Change password state
   const [pwForm, setPwForm] = useState({
@@ -194,25 +195,58 @@ export default function ProfilePage({
   const initials = (currentUser?.fullName || 'U').trim().charAt(0).toUpperCase();
 
   return (
-    <main className="profile-page flex-grow-1">
-      <div className="container py-4 py-lg-5">
-        <div className="profile-breadcrumb mb-4">
-          <button type="button" onClick={onBackToHome}>
-            <i className="bi bi-house-door me-1" />
-            Trang chủ
-          </button>
-          <span>/</span>
-          <span>Tài khoản</span>
-          <span>/</span>
-          <strong>
-            {section === 'favorites'
-              ? 'Sân yêu thích'
-              : section === 'password'
-                ? 'Đổi mật khẩu'
-                : 'Hồ sơ cá nhân'}
-          </strong>
-        </div>
+    <main className="profile-page flex-grow-1 pb-5">
+      {/* Architectural Sage Header Band */}
+      <section className="subpage-hero-band mb-4">
+        <div className="container">
+          <div className="profile-breadcrumb mb-2">
+            <button type="button" onClick={onBackToHome}>
+              <i className="bi bi-house-door me-1" />
+              Trang chủ
+            </button>
+            <span>/</span>
+            <span>Tài khoản</span>
+            <span>/</span>
+            <strong>
+              {section === 'favorites'
+                ? 'Sân yêu thích'
+                : section === 'password'
+                  ? 'Đổi mật khẩu'
+                  : 'Hồ sơ cá nhân'}
+            </strong>
+          </div>
 
+          <div className="d-flex flex-wrap justify-content-between align-items-end gap-3">
+            <div>
+              <div className="hero-eyebrow mb-2">
+                <span className="hero-eyebrow-dot"></span>
+                <span>KHÔNG GIAN CÁ NHÂN</span>
+              </div>
+              <h1 className="h2 fw-bold text-dark mb-1" style={{ letterSpacing: '-0.02em' }}>
+                {section === 'favorites'
+                  ? 'Cụm sân đã lưu'
+                  : section === 'password'
+                    ? 'Bảo mật tài khoản'
+                    : 'Hồ sơ & Tùy chọn'}
+              </h1>
+              <p className="text-muted small mb-0">
+                Quản lý thông tin liên hệ, sân yêu thích và bảo mật đăng nhập trên SportsBooking.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-brand btn-sm rounded-3 d-inline-flex align-items-center gap-1"
+              onClick={onOpenMyBookings}
+            >
+              <i className="bi bi-calendar2-check"></i>
+              <span>Lịch đặt của tôi</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <div className="container">
         <div className="row g-4 align-items-start">
           <aside className="col-12 col-lg-3">
             <div className="profile-sidebar">
@@ -252,19 +286,12 @@ export default function ProfilePage({
               <button className="profile-side-link text-danger" type="button" onClick={onLogout}>
                 <i className="bi bi-box-arrow-right" /> Đăng xuất
               </button>
-              <div className="profile-side-tip mt-3">
-                <i className="bi bi-lightning-charge-fill" />
-                <div>
-                  <strong>Thanh toán nhanh chóng</strong>
-                  <p>Thông tin được đồng bộ để tiết kiệm thời gian khi đặt sân và xuất vé QR.</p>
-                </div>
-              </div>
             </div>
           </aside>
 
           <section className="col-12 col-lg-9">
             <div className="profile-card">
-              {/* Summary Header with Live Stats */}
+              {/* Deep Forest Summary Banner with Mint Accents */}
               <div className="profile-summary">
                 <div className="profile-avatar" aria-label="Ảnh đại diện mặc định">
                   {initials}
@@ -275,18 +302,17 @@ export default function ProfilePage({
                     <span className="profile-role">{roleLabel}</span>
                   </div>
                   <div className="profile-summary-muted">{currentUser?.email || 'Tài khoản SportsBooking'}</div>
-                  <div className="d-flex flex-wrap gap-3 mt-2 small">
-                    <span className="badge bg-white text-dark border px-2 py-1">
-                      <i className="bi bi-calendar2-check text-success me-1"></i>
-                      {stats.totalBookings} lượt đặt ({stats.upcomingBookings} sắp tới)
+                  <div className="d-flex flex-wrap gap-3 mt-2 small profile-summary-stats">
+                    <span>
+                      <span className="stat-num">{stats.totalBookings}</span> lượt đặt ({stats.upcomingBookings} sắp tới)
                     </span>
-                    <span className="badge bg-white text-dark border px-2 py-1">
-                      <i className="bi bi-heart-fill text-danger me-1"></i>
-                      {stats.favoritesCount} sân yêu thích
+                    <span className="opacity-50">•</span>
+                    <span>
+                      <span className="stat-num">{stats.favoritesCount}</span> sân yêu thích
                     </span>
-                    <span className="badge bg-white text-dark border px-2 py-1">
-                      <i className="bi bi-star-fill text-warning me-1"></i>
-                      {stats.reviewsCount} đánh giá đã gửi
+                    <span className="opacity-50">•</span>
+                    <span>
+                      <span className="stat-num">{stats.reviewsCount}</span> đánh giá
                     </span>
                   </div>
                 </div>
@@ -360,7 +386,7 @@ export default function ProfilePage({
                 <>
                   <div className="d-flex justify-content-between align-items-center mb-2">
                     <h1 className="mb-0">Sân yêu thích của tôi</h1>
-                    <button type="button" className="btn btn-sm btn-outline-success" onClick={loadFavorites} disabled={favLoading}>
+                    <button type="button" className="btn btn-sm btn-outline-success rounded-3" onClick={loadFavorites} disabled={favLoading}>
                       <i className="bi bi-arrow-clockwise me-1"></i>Làm mới
                     </button>
                   </div>
@@ -375,54 +401,95 @@ export default function ProfilePage({
                       <i className="bi bi-heart fs-1 text-muted"></i>
                       <h6 className="mt-3 fw-bold">Chưa có sân yêu thích nào</h6>
                       <p className="text-muted small mb-3">
-                        Hãy nhấn nút trái tim trên các cụm sân ngoài trang chủ để lưu vào đây.
+                        Nhấn nút trái tim trên các cụm sân ngoài trang chủ để lưu vào đây.
                       </p>
-                      <button type="button" className="btn btn-brand btn-sm" onClick={onBackToHome}>
+                      <button type="button" className="btn btn-brand btn-sm rounded-3" onClick={onBackToHome}>
                         Khám phá sân ngay
                       </button>
                     </div>
                   ) : (
                     <div className="row g-3">
-                      {favorites.map((fav) => (
-                        <div key={fav.id} className="col-md-6">
-                          <div className="border rounded-4 p-3 h-100 d-flex flex-column justify-content-between bg-light">
-                            <div>
-                              <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
-                                <span className="badge bg-success">{fav.category}</span>
-                                <button
-                                  type="button"
-                                  className="btn btn-sm btn-outline-danger rounded-pill py-0 px-2"
-                                  onClick={() => handleRemoveFavorite(fav)}
-                                  title="Bỏ lưu sân này"
-                                >
-                                  <i className="bi bi-heart-fill me-1"></i>Bỏ lưu
-                                </button>
-                              </div>
-                              <h6 className="fw-bold text-brand-dark mb-1">{fav.name}</h6>
-                              <div className="text-muted small mb-2">
-                                <i className="bi bi-geo-alt me-1 text-brand"></i>
-                                {fav.address}
-                              </div>
-                            </div>
-
-                            <div className="d-flex justify-content-between align-items-center pt-2 border-top mt-2">
-                              <div>
-                                <div className="fw-bold text-brand-dark">{fav.priceFormatted}/giờ</div>
-                                <div className="text-muted" style={{ fontSize: '0.72rem' }}>
-                                  {fav.reviewCount > 0 ? `★ ${fav.ratingFormatted} (${fav.reviewCount})` : 'Chưa có đánh giá'} • {fav.openTime}
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                className="btn btn-brand btn-sm"
+                      {favorites.map((fav) => {
+                        const hasImg = Boolean(fav.imageUrl) && !failedFavImgs[fav.id];
+                        return (
+                          <div key={fav.id} className="col-md-6">
+                            <div className="court-card h-100 d-flex flex-column">
+                              <div
+                                className="court-card-img-wrapper cursor-pointer"
+                                style={{ height: '150px' }}
                                 onClick={() => onOpenCourt?.(fav)}
                               >
-                                Xem & Đặt sân
-                              </button>
+                                {hasImg ? (
+                                  <img
+                                    src={fav.imageUrl}
+                                    alt={fav.name}
+                                    className="court-card-img"
+                                    onError={() =>
+                                      setFailedFavImgs((prev) => ({ ...prev, [fav.id]: true }))
+                                    }
+                                  />
+                                ) : (
+                                  <div className="court-placeholder-box">
+                                    <i className="bi bi-image fs-3 opacity-75 mb-1"></i>
+                                    <span className="small fw-medium">{fav.category}</span>
+                                  </div>
+                                )}
+
+                                <span className="court-category-pill position-absolute top-0 start-0 m-2">
+                                  {fav.category}
+                                </span>
+
+                                <button
+                                  type="button"
+                                  className="btn btn-light btn-sm rounded-circle position-absolute top-0 end-0 m-2 p-0 d-flex align-items-center justify-content-center court-fav-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveFavorite(fav);
+                                  }}
+                                  title="Bỏ lưu sân này"
+                                >
+                                  <i className="bi bi-heart-fill text-danger"></i>
+                                </button>
+                              </div>
+
+                              <div className="p-3 d-flex flex-column flex-grow-1">
+                                <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
+                                  <h6
+                                    className="fw-bold text-dark mb-0 cursor-pointer"
+                                    onClick={() => onOpenCourt?.(fav)}
+                                  >
+                                    {fav.name}
+                                  </h6>
+                                  <div className="d-flex align-items-center gap-1 small fw-semibold flex-shrink-0">
+                                    <i className="bi bi-star-fill text-warning"></i>
+                                    <span>{fav.reviewCount > 0 ? fav.ratingFormatted : 'Mới'}</span>
+                                  </div>
+                                </div>
+
+                                <div className="text-muted small mb-3 text-truncate">
+                                  <i className="bi bi-geo-alt me-1 text-brand"></i>
+                                  {fav.address}
+                                </div>
+
+                                <div className="mt-auto pt-2 border-top d-flex justify-content-between align-items-center">
+                                  <div>
+                                    <span className="fw-bold text-dark">{fav.priceFormatted}</span>
+                                    <span className="text-muted small"> / giờ</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="btn btn-link p-0 text-decoration-none fw-semibold small text-brand-dark d-inline-flex align-items-center gap-1"
+                                    onClick={() => onOpenCourt?.(fav)}
+                                  >
+                                    <span>Xem sân</span>
+                                    <i className="bi bi-arrow-right"></i>
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </>

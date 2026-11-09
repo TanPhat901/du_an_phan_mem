@@ -99,16 +99,16 @@ export default function TicketBarcode({ booking, compact = false }) {
   const ticketCode = booking.id || `BK-${booking.bookingId || 0}`;
   const isPending = booking.status === 'PENDING';
   const isCompleted = booking.status === 'COMPLETED';
-  const headerGradient = isPending
-    ? 'linear-gradient(135deg, #b45309 0%, #d97706 100%)'
+  const headerColor = isPending
+    ? '#b45309'
     : isCompleted
-      ? 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)'
-      : 'linear-gradient(135deg, #0b4d3c 0%, #11785c 100%)';
+      ? '#1d4ed8'
+      : '#0b4d3c';
   const headerLabel = isPending
-    ? 'PHIẾU ĐẶT SÂN • CHỜ CHỦ SÂN XÁC NHẬN'
+    ? 'Phiếu đặt sân • Chờ chủ sân xác nhận'
     : isCompleted
-      ? 'VÉ ĐIỆN TỬ • ĐÃ CHECK-IN THÀNH CÔNG'
-      : 'VÉ ĐIỆN TỬ CHECK-IN SÂN • ĐÃ XÁC NHẬN';
+      ? 'Vé điện tử • Đã check-in'
+      : 'Vé điện tử • Đã xác nhận';
   const checkinPayload = `SPORTSBOOKING|${ticketCode}|${booking.date}|${booking.timeSlot}`;
   const checkinQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=132x132&data=${encodeURIComponent(checkinPayload)}`;
 
@@ -138,16 +138,16 @@ export default function TicketBarcode({ booking, compact = false }) {
   return (
     <div className="d-flex flex-column gap-3">
       {/* Electronic Check-in Pass */}
-      <div className="border rounded-4 overflow-hidden bg-white shadow-xs">
+      <div className="border rounded-4 overflow-hidden bg-white shadow-sm">
         <div
           className="px-3 py-2 text-white d-flex justify-content-between align-items-center"
-          style={{ background: headerGradient }}
+          style={{ backgroundColor: headerColor }}
         >
           <div className="d-flex align-items-center gap-2">
             <i className={`bi ${isPending ? 'bi-hourglass-split' : isCompleted ? 'bi-patch-check-fill' : 'bi-qr-code-scan'}`}></i>
             <span className="fw-bold small">{headerLabel}</span>
           </div>
-          <span className="badge bg-white text-dark fw-bold">{ticketCode}</span>
+          <span className="badge rounded-pill bg-white text-dark fw-bold">{ticketCode}</span>
         </div>
 
         <div className={compact ? 'p-3' : 'p-4'}>
@@ -222,19 +222,19 @@ export default function TicketBarcode({ booking, compact = false }) {
 
       {/* Real Owner VietQR Payment Panel (when chosen & owner bank is configured) */}
       {showVietQr && (
-        <div className="border rounded-4 p-3 bg-light">
+        <div className="border border-success-subtle rounded-4 p-3" style={{ backgroundColor: '#f4f9f6' }}>
           <div className="d-flex justify-content-between align-items-center mb-2">
-            <div className="fw-bold text-brand-dark small d-flex align-items-center gap-2">
-              <i className="bi bi-bank2 text-success"></i>
-              <span>THÔNG TIN CHUYỂN KHOẢN VIETQR CHỦ SÂN</span>
+            <div className="fw-semibold text-brand-dark small d-flex align-items-center gap-2">
+              <i className="bi bi-bank2 text-brand"></i>
+              <span>Thông tin chuyển khoản VietQR</span>
             </div>
-            <span className="badge bg-success-subtle text-success">Quét bằng App Ngân hàng</span>
+            <span className="badge rounded-pill bg-success-subtle text-success">Quét bằng App Ngân hàng</span>
           </div>
 
           <div className="row g-3 align-items-center">
             {vietQrUrl && !vietQrFailed && (
               <div className="col-sm-4 text-center">
-                <div className="bg-white p-2 rounded-3 border d-inline-block shadow-xs">
+                <div className="bg-white p-2 rounded-3 border d-inline-block shadow-sm">
                   <img
                     src={vietQrUrl}
                     alt="Mã VietQR thanh toán sân"

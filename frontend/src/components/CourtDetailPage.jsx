@@ -397,53 +397,116 @@ export default function CourtDetailPage({
 
   return (
     <div className="bg-light flex-grow-1 pb-5">
-      <div className="container py-4">
-        {/* Breadcrumb & Action Row */}
-        <div className="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-          <nav aria-label="breadcrumb">
-            <ol className="breadcrumb mb-0 small text-muted">
-              <li className="breadcrumb-item">
-                <a href="#" onClick={(e) => { e.preventDefault(); onBackToHome(); }} className="text-decoration-none text-muted">
-                  <i className="bi bi-house-door me-1"></i>Trang chủ
-                </a>
-              </li>
-              {detail?.city && (
-                <li className="breadcrumb-item text-muted">{detail.city}</li>
-              )}
-              <li className="breadcrumb-item active fw-semibold text-dark" aria-current="page">
-                {detail?.name || 'Chi tiết cụm sân'}
-              </li>
-            </ol>
-          </nav>
+      {/* Architectural Sage Header Band */}
+      <section className="subpage-hero-band mb-4">
+        <div className="container">
+          {/* Breadcrumb & Action Row */}
+          <div className="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+            <nav aria-label="breadcrumb">
+              <ol className="breadcrumb mb-0 small text-muted">
+                <li className="breadcrumb-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); onBackToHome(); }} className="text-decoration-none text-muted">
+                    <i className="bi bi-house-door me-1"></i>Trang chủ
+                  </a>
+                </li>
+                {detail?.city && (
+                  <li className="breadcrumb-item text-muted">{detail.city}</li>
+                )}
+                <li className="breadcrumb-item active fw-semibold text-brand-dark" aria-current="page">
+                  {detail?.name || 'Chi tiết cụm sân'}
+                </li>
+              </ol>
+            </nav>
 
-          <div className="d-flex align-items-center gap-2">
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1 bg-white"
-              onClick={handleShareClick}
-            >
-              <i className={`bi ${copiedLink ? 'bi-check2 text-success' : 'bi-share'}`}></i>
-              <span>{copiedLink ? 'Đã sao chép ✓' : 'Chia sẻ'}</span>
-            </button>
-            <button
-              type="button"
-              className={`btn btn-sm ${isSaved ? 'btn-danger' : 'btn-outline-secondary bg-white'} d-flex align-items-center gap-1`}
-              onClick={() => onToggleFavorite?.(detail || court)}
-              disabled={!detail}
-            >
-              <i className={`bi ${isSaved ? 'bi-heart-fill' : 'bi-heart'}`}></i>
-              <span>{isSaved ? 'Đã lưu' : 'Lưu sân'}</span>
-              {Number(detail?.favoritesCount || 0) > 0 && (
-                <span className="badge bg-white bg-opacity-25 text-reset ms-1" style={{ fontSize: '0.68rem' }}>
-                  {detail.favoritesCount}
-                </span>
+            <div className="d-flex align-items-center gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary rounded-3 d-flex align-items-center gap-1 bg-white"
+                onClick={handleShareClick}
+              >
+                <i className={`bi ${copiedLink ? 'bi-check2 text-success' : 'bi-share'}`}></i>
+                <span>{copiedLink ? 'Đã sao chép ✓' : 'Chia sẻ'}</span>
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm rounded-3 ${isSaved ? 'btn-danger' : 'btn-outline-secondary bg-white'} d-flex align-items-center gap-1`}
+                onClick={() => onToggleFavorite?.(detail || court)}
+                disabled={!detail}
+              >
+                <i className={`bi ${isSaved ? 'bi-heart-fill' : 'bi-heart'}`}></i>
+                <span>{isSaved ? 'Đã lưu' : 'Lưu sân'}</span>
+                {Number(detail?.favoritesCount || 0) > 0 && (
+                  <span className="badge bg-white bg-opacity-25 text-reset ms-1" style={{ fontSize: '0.68rem' }}>
+                    {detail.favoritesCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Court Title & Quick Meta */}
+          <div>
+            <div className="hero-eyebrow mb-2">
+              <span className="hero-eyebrow-dot"></span>
+              <span>{detail?.category || 'Thể thao'}</span>
+            </div>
+
+            <h1 className="h2 fw-bold text-dark mb-2" style={{ letterSpacing: '-0.02em' }}>
+              {detail?.name || 'Đang tải thông tin cụm sân...'}
+            </h1>
+
+            <div className="d-flex flex-wrap align-items-center gap-3 text-muted small">
+              <a
+                href="#court-reviews-section"
+                className="d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill bg-white border text-dark fw-semibold text-decoration-none"
+                onClick={(e) => {
+                  e.preventDefault();
+                  reviewsSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+                }}
+              >
+                <i className="bi bi-star-fill text-warning"></i>
+                <span>{displayAvgRating}</span>
+                <span className="text-muted fw-normal">({displayReviewCount} đánh giá)</span>
+              </a>
+              {detail?.address && (
+                <div className="d-flex align-items-center gap-1">
+                  <i className="bi bi-geo-alt text-brand"></i>
+                  <span>{detail.address}</span>
+                </div>
               )}
-            </button>
+              <span>•</span>
+              <span>{subCourts.length > 0 ? `${subCourts.length} sân con` : 'Đặt theo cụm sân'}</span>
+              {detail?.openTime && (
+                <>
+                  <span>•</span>
+                  <span>Mở cửa: <strong className="text-dark">{detail.openTime}</strong></span>
+                </>
+              )}
+              {detail?.ownerPhone && (
+                <>
+                  <span>•</span>
+                  <div className="d-flex align-items-center gap-1">
+                    <i className="bi bi-telephone text-success"></i>
+                    <span>{detail.ownerPhone}</span>
+                  </div>
+                </>
+              )}
+              {detail?.ownerBank?.bankAccountNo && (
+                <>
+                  <span>•</span>
+                  <span className="text-brand-dark fw-semibold">
+                    <i className="bi bi-qr-code me-1"></i>Hỗ trợ VietQR
+                  </span>
+                </>
+              )}
+            </div>
           </div>
         </div>
+      </section>
 
+      <div className="container">
         {!detailLoading && detailError && (
-          <div className="alert alert-danger d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4">
+          <div className="alert alert-danger rounded-4 d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4">
             <div>
               <i className="bi bi-exclamation-triangle-fill me-2"></i>
               <strong>Không thể tải thông tin cụm sân:</strong> {detailError}
@@ -451,14 +514,14 @@ export default function CourtDetailPage({
             <div className="d-flex gap-2">
               <button
                 type="button"
-                className="btn btn-sm btn-outline-danger"
+                className="btn btn-sm btn-outline-danger rounded-3"
                 onClick={() => setDetailReloadKey((k) => k + 1)}
               >
                 <i className="bi bi-arrow-clockwise me-1"></i>Thử lại
               </button>
               <button
                 type="button"
-                className="btn btn-sm btn-outline-secondary"
+                className="btn btn-sm btn-outline-secondary rounded-3"
                 onClick={onBackToHome}
               >
                 Về trang chủ
@@ -467,83 +530,24 @@ export default function CourtDetailPage({
           </div>
         )}
 
-        {/* Court Header Info */}
-        <div className="mb-4">
-          <div className="d-flex flex-wrap gap-2 mb-2">
-            <span className="badge bg-success text-uppercase py-1 px-2 fw-bold" style={{ fontSize: '0.72rem' }}>
-              {detail?.category || 'THỂ THAO'}
-            </span>
-            <span className="badge bg-secondary-subtle text-secondary py-1 px-2 fw-semibold" style={{ fontSize: '0.72rem' }}>
-              {subCourts.length > 0 ? `${subCourts.length} sân thi đấu` : 'Đặt theo cụm sân'}
-            </span>
-            {detail?.openTime && (
-              <span className="badge bg-secondary-subtle text-secondary py-1 px-2 fw-semibold" style={{ fontSize: '0.72rem' }}>
-                Mở cửa: {detail.openTime}
-              </span>
-            )}
-            {detail?.ownerBank?.bankAccountNo && (
-              <span className="badge bg-info-subtle text-info-emphasis py-1 px-2 fw-semibold" style={{ fontSize: '0.72rem' }}>
-                <i className="bi bi-qr-code me-1"></i>Hỗ trợ VietQR
-              </span>
-            )}
-          </div>
-
-          <h1 className="h2 fw-bold text-brand-dark mb-2">
-            {detail?.name || 'Đang tải thông tin cụm sân...'}
-          </h1>
-
-          <div className="d-flex flex-wrap align-items-center gap-3 text-muted small">
-            <a
-              href="#court-reviews-section"
-              className="d-flex align-items-center gap-1 text-dark fw-bold text-decoration-none"
-              onClick={(e) => {
-                e.preventDefault();
-                reviewsSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
-              }}
-            >
-              <i className="bi bi-star-fill text-warning"></i>
-              <span>{displayAvgRating}</span>
-              <span className="text-muted fw-normal">({displayReviewCount} đánh giá)</span>
-            </a>
-            {detail?.address && (
-              <>
-                <span>•</span>
-                <div className="d-flex align-items-center gap-1">
-                  <i className="bi bi-geo-alt text-brand"></i>
-                  <span>{detail.address}</span>
-                </div>
-              </>
-            )}
-            {detail?.ownerPhone && (
-              <>
-                <span>•</span>
-                <div className="d-flex align-items-center gap-1">
-                  <i className="bi bi-telephone text-success"></i>
-                  <span>Hotline: {detail.ownerPhone}</span>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
         {/* Dynamic Real-Image Gallery */}
         {galleryImages.length === 0 ? (
-          <div className="position-relative mb-5 shadow-sm rounded-4 overflow-hidden" style={{ height: '300px' }}>
+          <div className="position-relative mb-4 border rounded-4 shadow-sm overflow-hidden" style={{ height: '280px' }}>
             <div className="court-placeholder-box">
-              <i className="bi bi-image fs-1 opacity-75 mb-2"></i>
-              <h5 className="fw-bold mb-1">{detail?.name || 'Cụm sân thể thao'}</h5>
+              <i className="bi bi-image fs-2 opacity-75 mb-2"></i>
+              <div className="fw-semibold mb-1">{detail?.name || 'Cụm sân thể thao'}</div>
               <div className="small opacity-75">Chủ sân chưa tải lên hình ảnh cơ sở</div>
             </div>
             {(selectedSubCourt?.name || detail?.name) && (
               <div className="position-absolute bottom-0 start-0 m-3">
-                <span className="badge bg-dark bg-opacity-75 text-white py-2 px-3 fw-semibold">
-                  ● {selectedSubCourt?.name || detail?.name}
+                <span className="court-category-pill py-1 px-3">
+                  {selectedSubCourt?.name || detail?.name}
                 </span>
               </div>
             )}
           </div>
         ) : galleryImages.length === 1 ? (
-          <div className="position-relative mb-5 shadow-sm rounded-4 overflow-hidden" style={{ height: '380px' }}>
+          <div className="position-relative mb-4 border rounded-4 shadow-sm overflow-hidden" style={{ height: '360px' }}>
             <img
               src={galleryImages[0]}
               alt={detail?.name || 'Hình ảnh cụm sân'}
@@ -551,17 +555,17 @@ export default function CourtDetailPage({
               onError={() => handleImageError(galleryImages[0])}
             />
             <div className="position-absolute bottom-0 start-0 m-3">
-              <span className="badge bg-dark bg-opacity-75 text-white py-2 px-3 fw-semibold">
-                ● {selectedSubCourt?.name || detail?.name}
+              <span className="court-category-pill py-1 px-3">
+                {selectedSubCourt?.name || detail?.name}
               </span>
             </div>
           </div>
         ) : (
           <div
-            className="court-gallery-grid mb-5 shadow-sm"
+            className="court-gallery-grid mb-4 border"
             style={
               galleryImages.length <= 3
-                ? { gridTemplateColumns: galleryImages.length === 2 ? '1.5fr 1fr' : '2fr 1fr', gridTemplateRows: galleryImages.length === 2 ? '360px' : '210px 210px' }
+                ? { gridTemplateColumns: galleryImages.length === 2 ? '1.5fr 1fr' : '2fr 1fr', gridTemplateRows: galleryImages.length === 2 ? '360px' : '200px 200px' }
                 : undefined
             }
           >
@@ -573,7 +577,7 @@ export default function CourtDetailPage({
                   key={imgUrl}
                   className={isMain ? 'gallery-main-img' : 'gallery-sub-img'}
                   style={{
-                    ...(isMain && galleryImages.length === 2 ? { gridRow: 'auto', borderRadius: '14px 0 0 14px' } : {}),
+                    ...(isMain && galleryImages.length === 2 ? { gridRow: 'auto', borderRadius: '16px 0 0 16px' } : {}),
                     ...(isWideLastOnFour ? { gridColumn: 'span 2' } : {})
                   }}
                 >
@@ -584,8 +588,8 @@ export default function CourtDetailPage({
                   />
                   {isMain && (
                     <div className="position-absolute bottom-0 start-0 m-3">
-                      <span className="badge bg-dark bg-opacity-75 text-white py-2 px-3 fw-semibold">
-                        ● {selectedSubCourt?.name || detail?.name}
+                      <span className="court-category-pill py-1 px-3">
+                        {selectedSubCourt?.name || detail?.name}
                       </span>
                     </div>
                   )}
@@ -599,12 +603,17 @@ export default function CourtDetailPage({
         <div className="row g-4">
           {/* Left Column */}
           <div className="col-lg-7">
-            {/* DANH SÁCH SÂN CON TẠI CƠ SỞ */}
-            <div className="bg-white rounded-4 p-4 border shadow-sm mb-4">
+            {/* Danh sách sân con */}
+            <div className="editorial-panel-card p-4 mb-4">
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <h5 className="fw-bold text-brand-dark mb-0">SÂN CON TẠI CƠ SỞ</h5>
-                <span className="text-muted small">
-                  {subCourts.length > 0 ? `${subCourts.length} lựa chọn khả dụng` : 'Theo cơ sở'}
+                <div>
+                  <div className="hero-eyebrow mb-1">
+                    <span>DANH SÁCH SÂN CON</span>
+                  </div>
+                  <h5 className="h6 fw-bold text-dark mb-0">Chọn sân thi đấu tại cơ sở</h5>
+                </div>
+                <span className="badge bg-brand-light text-brand-dark border border-success-subtle px-2 py-1 rounded-pill">
+                  {subCourts.length > 0 ? `${subCourts.length} sân` : 'Theo cơ sở'}
                 </span>
               </div>
               {detailLoading ? (
@@ -612,7 +621,7 @@ export default function CourtDetailPage({
               ) : subCourts.length === 0 ? (
                 <div className="p-3 bg-light rounded-3 border text-muted small">
                   <i className="bi bi-info-circle text-brand me-2"></i>
-                  Cụm sân áp dụng đặt theo khung giờ chung toàn cơ sở (chưa phân chia sân con riêng lẻ).
+                  Cụm sân áp dụng đặt theo khung giờ chung toàn cơ sở.
                 </div>
               ) : (
                 <div className="row g-3">
@@ -621,22 +630,23 @@ export default function CourtDetailPage({
                     return (
                       <div key={sc.id || idx} className="col-md-6">
                         <div
-                          className={`p-3 rounded-3 border h-100 ${isSelected ? 'border-success bg-success-subtle bg-opacity-25' : 'bg-light'}`}
-                          style={{ cursor: 'pointer' }}
+                          className={`subcourt-select-card h-100 ${isSelected ? 'active' : ''}`}
                           onClick={() => setSelectedSubCourt(sc)}
                         >
                           <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
                             <div className="fw-bold text-dark small">{sc.name}</div>
-                            {isSelected && <span className="badge bg-success">Đang chọn</span>}
+                            {isSelected && (
+                              <span className="badge bg-brand-dark text-white rounded-pill">Đang chọn</span>
+                            )}
                           </div>
                           {sc.surfaceType && (
                             <div className="text-muted mb-2" style={{ fontSize: '0.75rem' }}>
                               <i className="bi bi-layers me-1"></i>{sc.surfaceType}
                             </div>
                           )}
-                          <div className="d-flex justify-content-between small">
-                            <span className="text-muted">Giờ thường: <strong>{Number(sc.normalPrice).toLocaleString('vi-VN')}đ</strong></span>
-                            <span className="text-brand fw-bold">Giờ vàng: {Number(sc.peakPrice).toLocaleString('vi-VN')}đ</span>
+                          <div className="d-flex justify-content-between small pt-1">
+                            <span className="text-muted">Thường: <strong className="text-dark">{Number(sc.normalPrice).toLocaleString('vi-VN')}đ</strong></span>
+                            <span className="text-brand-dark fw-semibold">Giờ vàng: {Number(sc.peakPrice).toLocaleString('vi-VN')}đ</span>
                           </div>
                         </div>
                       </div>
@@ -646,10 +656,15 @@ export default function CourtDetailPage({
               )}
             </div>
 
-            {/* TIỆN ÍCH TẠI SÂN */}
-            <div className="bg-white rounded-4 p-4 border shadow-sm mb-4">
+            {/* Tiện ích */}
+            <div className="editorial-panel-card p-4 mb-4">
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <h5 className="fw-bold text-brand-dark mb-0">TIỆN ÍCH TẠI SÂN</h5>
+                <div>
+                  <div className="hero-eyebrow mb-1">
+                    <span>CƠ SỞ VẬT CHẤT</span>
+                  </div>
+                  <h5 className="h6 fw-bold text-dark mb-0">Tiện ích tại sân</h5>
+                </div>
                 <span className="text-muted small">{displayAmenities.length} tiện ích</span>
               </div>
 
@@ -658,8 +673,8 @@ export default function CourtDetailPage({
               ) : (
                 <div className="d-flex flex-wrap gap-2">
                   {displayAmenities.map((item, idx) => (
-                    <span key={idx} className="badge bg-light text-dark border px-3 py-2 fw-semibold">
-                      <i className="bi bi-check-circle-fill text-success me-1"></i>
+                    <span key={idx} className="amenity-chip px-3 py-1">
+                      <i className="bi bi-check2 text-success me-1"></i>
                       {item}
                     </span>
                   ))}
@@ -667,24 +682,25 @@ export default function CourtDetailPage({
               )}
             </div>
 
-            {/* ĐÁNH GIÁ TỪ NGƯỜI CHƠI (REAL POSTGRESQL) */}
-            <div id="court-reviews-section" ref={reviewsSectionRef} className="bg-white rounded-4 p-4 border shadow-sm">
+            {/* Đánh giá từ người chơi */}
+            <div id="court-reviews-section" ref={reviewsSectionRef} className="editorial-panel-card p-4">
               <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-                <div className="d-flex align-items-center gap-2">
-                  <div className="d-inline-flex align-items-center gap-1 bg-warning bg-opacity-25 text-dark fw-bold rounded-pill px-3 py-1">
-                    <i className="bi bi-star-fill text-warning"></i>
-                    <span>{displayAvgRating}</span>
+                <div>
+                  <div className="hero-eyebrow mb-1">
+                    <span>PHẢN HỒI THỰC TẾ</span>
                   </div>
-                  <div>
-                    <h5 className="fw-bold text-brand-dark mb-0">Đánh giá từ người chơi</h5>
-                    <div className="text-muted small">{displayReviewCount} nhận xét thực tế tại sân</div>
-                  </div>
+                  <h5 className="h6 fw-bold text-dark mb-1">Đánh giá từ người chơi</h5>
+                  <div className="text-muted small">{displayReviewCount} nhận xét tại sân</div>
                 </div>
+                <span className="badge bg-brand-light text-brand-dark border border-success-subtle px-3 py-2 rounded-pill fw-bold">
+                  <i className="bi bi-star-fill text-warning me-1"></i>
+                  {displayAvgRating}
+                </span>
               </div>
 
               {/* Rating breakdown */}
               {displayReviewCount > 0 && (
-                <div className="row g-2 align-items-center p-3 bg-light rounded-3 border mb-4">
+                <div className="row g-2 align-items-center p-3 rounded-4 border mb-4" style={{ backgroundColor: '#f8fafc' }}>
                   <div className="col-sm-4 text-center border-end-sm">
                     <div className="display-6 fw-bold text-brand-dark mb-0">{displayAvgRating}</div>
                     <div className="text-warning small mb-1">
@@ -705,7 +721,10 @@ export default function CourtDetailPage({
                         <div key={star} className="d-flex align-items-center gap-2 small mb-1">
                           <span className="text-muted fw-semibold" style={{ width: '34px' }}>{star} ★</span>
                           <div className="progress flex-grow-1" style={{ height: '7px' }}>
-                            <div className="progress-bar bg-warning" style={{ width: `${pct}%` }}></div>
+                            <div
+                              className="progress-bar"
+                              style={{ width: `${pct}%`, backgroundColor: '#0b4d3c' }}
+                            ></div>
                           </div>
                           <span className="text-muted text-end" style={{ width: '28px' }}>{count}</span>
                         </div>
@@ -716,7 +735,11 @@ export default function CourtDetailPage({
               )}
 
               {/* Review Submission / Eligibility Box */}
-              <div className="p-3 bg-light rounded-3 border mb-4">
+              <div
+                className={`p-3 rounded-4 border mb-4 ${
+                  currentUser && reviewsState.canReview ? 'bg-brand-light border-success-subtle' : 'bg-light'
+                }`}
+              >
                 {!currentUser ? (
                   <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <div className="small text-muted">
@@ -725,7 +748,7 @@ export default function CourtDetailPage({
                     </div>
                     <button
                       type="button"
-                      className="btn btn-sm btn-brand"
+                      className="btn btn-sm btn-brand rounded-3"
                       onClick={() => onRequireAuth?.('login')}
                     >
                       Đăng nhập
@@ -766,7 +789,7 @@ export default function CourtDetailPage({
 
                     <textarea
                       rows="3"
-                      className="form-control form-control-sm mb-2"
+                      className="form-control form-control-sm mb-2 bg-white"
                       placeholder="Mặt sân, ánh sáng, thái độ phục vụ, chỗ để xe như thế nào?..."
                       maxLength={1000}
                       value={commentInput}
@@ -784,14 +807,14 @@ export default function CourtDetailPage({
                         {reviewsState.myReview && (
                           <button
                             type="button"
-                            className="btn btn-sm btn-outline-danger"
+                            className="btn btn-sm btn-outline-danger rounded-3"
                             disabled={reviewBusy}
                             onClick={handleDeleteMyReview}
                           >
                             Xóa đánh giá
                           </button>
                         )}
-                        <button type="submit" className="btn btn-sm btn-brand" disabled={reviewBusy}>
+                        <button type="submit" className="btn btn-sm btn-brand rounded-3" disabled={reviewBusy}>
                           {reviewBusy ? 'Đang gửi...' : reviewsState.myReview ? 'Cập nhật đánh giá' : 'Gửi đánh giá'}
                         </button>
                       </div>
@@ -804,19 +827,19 @@ export default function CourtDetailPage({
               {reviewsState.loading ? (
                 <div className="text-center py-3 small text-muted">Đang tải nhận xét...</div>
               ) : reviewsState.reviews.length === 0 ? (
-                <div className="text-center py-4 text-muted small border rounded-3 bg-white">
-                  <i className="bi bi-stars fs-4 d-block mb-1 text-warning"></i>
+                <div className="text-center py-4 text-muted small border rounded-4 bg-white">
+                  <i className="bi bi-chat-square-text fs-4 d-block mb-2 text-muted"></i>
                   Chưa có đánh giá nào cho cụm sân này. Hãy là người đầu tiên chia sẻ trải nghiệm sau khi Check-in sân!
                 </div>
               ) : (
                 <div className="d-flex flex-column gap-3">
                   {reviewsState.reviews.map((rv) => (
-                    <div key={rv.reviewId} className="p-3 bg-light rounded-3 border">
+                    <div key={rv.reviewId} className="p-3 bg-light rounded-4 border">
                       <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
                         <div className="d-flex align-items-center gap-2">
                           <div
-                            className="rounded-circle bg-success text-white fw-bold d-flex align-items-center justify-content-center flex-shrink-0"
-                            style={{ width: '38px', height: '38px', fontSize: '0.85rem' }}
+                            className="rounded-circle bg-brand-dark text-white fw-bold d-flex align-items-center justify-content-center flex-shrink-0"
+                            style={{ width: '36px', height: '36px', fontSize: '0.82rem' }}
                           >
                             {getInitials(rv.authorName)}
                           </div>
@@ -856,13 +879,24 @@ export default function CourtDetailPage({
             </div>
           </div>
 
-          {/* Right Column: Sticky Booking Card */}
+          {/* Right Column: Sticky Editorial Booking Sidebar */}
           <div className="col-lg-5">
             <div className="booking-sidebar-card sticky-top" style={{ top: '90px' }}>
-              {/* Step 1: Chọn Sân Con */}
+              <div className="d-flex justify-content-between align-items-center pb-3 mb-3 border-bottom">
+                <div className="hero-eyebrow">
+                  <span className="hero-eyebrow-dot"></span>
+                  <span>ĐẶT LỊCH TRỰC TIẾP</span>
+                </div>
+                <div className="fw-bold text-brand-dark small">
+                  {Number(activePrice).toLocaleString('vi-VN')}đ <span className="text-muted fw-normal">/ ca</span>
+                </div>
+              </div>
+
+              {/* Step 01: Chọn Sân Con */}
               <div className="mb-3">
-                <label className="form-label small fw-bold text-muted text-uppercase mb-1">
-                  1. CHỌN SÂN THI ĐẤU
+                <label className="form-label small fw-bold text-dark mb-2 d-flex align-items-center gap-2">
+                  <span className="step-index-pill">01</span>
+                  <span>Chọn sân con</span>
                 </label>
                 {subCourts.length > 0 ? (
                   <select
@@ -887,13 +921,14 @@ export default function CourtDetailPage({
                 )}
               </div>
 
-              {/* Step 2: Chọn Ngày Thi Đấu */}
+              {/* Step 02: Chọn Ngày */}
               <div className="mb-3">
-                <div className="d-flex justify-content-between align-items-center mb-1">
-                  <label className="form-label small fw-bold text-muted text-uppercase mb-0">
-                    2. CHỌN NGÀY THI ĐẤU
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <label className="form-label small fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+                    <span className="step-index-pill">02</span>
+                    <span>Chọn ngày chơi</span>
                   </label>
-                  <span className="small text-muted fw-semibold">
+                  <span className="small text-muted">
                     Tháng {selectedDate.monthStr}/{selectedDate.yearStr}
                   </span>
                 </div>
@@ -924,11 +959,12 @@ export default function CourtDetailPage({
                 />
               </div>
 
-              {/* Step 3: Chọn Khung Giờ (Real DB Availability) */}
+              {/* Step 03: Chọn Khung Giờ */}
               <div className="mb-4">
-                <div className="d-flex justify-content-between align-items-center mb-1">
-                  <label className="form-label small fw-bold text-muted text-uppercase mb-0">
-                    3. CHỌN KHUNG GIỜ TRỐNG
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <label className="form-label small fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+                    <span className="step-index-pill">03</span>
+                    <span>Chọn khung giờ</span>
                   </label>
                   <button
                     type="button"
@@ -966,11 +1002,14 @@ export default function CourtDetailPage({
                             onClick={() => !isDisabled && setSelectedSlot(ts)}
                           >
                             <span className={`fw-bold ${isSelected ? 'text-brand-dark' : isDisabled ? 'text-muted' : 'text-dark'}`}>
-                              {ts.slot} {ts.isPeak ? '⭐' : ''}
+                              {ts.slot}
+                              {ts.isPeak && (
+                                <i className="bi bi-star-fill text-warning ms-1" style={{ fontSize: '0.68rem' }} title="Giờ vàng"></i>
+                              )}
                             </span>
                             <span
                               style={{ fontSize: '0.72rem' }}
-                              className={isDisabled ? 'text-danger-emphasis' : isSelected ? 'text-success fw-bold' : 'text-muted'}
+                              className={isDisabled ? 'text-danger-emphasis' : isSelected ? 'text-brand-dark fw-semibold' : 'text-muted'}
                             >
                               {isSelected ? `Đang chọn • ${Math.round(ts.price / 1000)}k` : ts.label}
                             </span>
@@ -983,58 +1022,52 @@ export default function CourtDetailPage({
               </div>
 
               {/* Price Calculation & Checkout */}
-              <div className="pt-3 border-top mb-3">
+              <div className="price-highlight-box mb-3">
                 <div className="d-flex justify-content-between align-items-baseline mb-1">
-                  <span className="text-muted small">
+                  <span className="text-muted small fw-medium">
                     Tổng cộng ({formatDurationLabel(selectedSlot?.durationMinutes)}):
                   </span>
-                  <span className="small text-muted fw-semibold">
-                    {selectedSlot?.isPeak ? 'Giờ vàng ⭐ • ' : ''}
+                  <span className="small text-brand-dark fw-semibold">
+                    {selectedSlot?.isPeak ? 'Giờ vàng • ' : ''}
                     {selectedSlot ? `${selectedSlot.slot} • ` : ''}
                     {selectedDate.dateNum}/{selectedDate.monthStr}
                   </span>
                 </div>
-                <div className="fs-3 fw-bold text-brand-dark mb-3">
+                <div className="fs-3 fw-bold text-brand-dark">
                   {Number(activePrice).toLocaleString('vi-VN')}đ
                 </div>
-
-                {!currentUser && (
-                  <div className="alert alert-warning py-2 px-3 small mb-2 d-flex align-items-center gap-2 border-0">
-                    <i className="bi bi-person-lock fs-5 flex-shrink-0"></i>
-                    <span>Bạn cần đăng nhập tài khoản trước khi tiến hành đặt sân.</span>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  disabled={slotsLoading || (Boolean(currentUser) && !selectedSlot)}
-                  className="btn btn-brand w-100 py-3 fw-bold fs-6 d-flex align-items-center justify-content-center gap-2 shadow-sm rounded-3"
-                  onClick={handleBooking}
-                >
-                  {!currentUser ? (
-                    <>
-                      <i className="bi bi-box-arrow-in-right"></i>
-                      <span>Đăng nhập để Đặt sân ngay</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>{selectedSlot ? 'Tiến hành Đặt sân ngay' : 'Vui lòng chọn khung giờ trống'}</span>
-                      <i className="bi bi-arrow-right"></i>
-                    </>
-                  )}
-                </button>
               </div>
 
+              {!currentUser && (
+                <div className="alert alert-warning rounded-3 py-2 px-3 small mb-3 d-flex align-items-center gap-2 border-0">
+                  <i className="bi bi-person-lock fs-5 flex-shrink-0"></i>
+                  <span>Bạn cần đăng nhập tài khoản trước khi tiến hành đặt sân.</span>
+                </div>
+              )}
+
+              <button
+                type="button"
+                disabled={slotsLoading || (Boolean(currentUser) && !selectedSlot)}
+                className="btn btn-brand w-100 py-2 fw-semibold d-flex align-items-center justify-content-center gap-2 rounded-3 mb-3"
+                onClick={handleBooking}
+              >
+                {!currentUser ? (
+                  <>
+                    <i className="bi bi-box-arrow-in-right"></i>
+                    <span>Đăng nhập để đặt sân</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{selectedSlot ? 'Tiến hành đặt sân' : 'Chọn khung giờ trống'}</span>
+                    <i className="bi bi-arrow-right"></i>
+                  </>
+                )}
+              </button>
+
               {/* Guarantees */}
-              <div className="text-center text-muted small" style={{ fontSize: '0.75rem', lineHeight: '1.4' }}>
-                <div className="mb-1">
-                  <i className="bi bi-hourglass-split text-warning me-1"></i>
-                  Yêu cầu đặt sân sẽ được gửi tới chủ sân xác nhận
-                </div>
-                <div>
-                  <i className="bi bi-shield-check text-success me-1"></i>
-                  Kiểm tra lịch thời gian thực • Chống trùng lịch 100%
-                </div>
+              <div className="text-center text-muted" style={{ fontSize: '0.75rem', lineHeight: '1.5' }}>
+                <div>Yêu cầu đặt sân sẽ được gửi tới chủ sân xác nhận</div>
+                <div>Kiểm tra khung giờ trống theo thời gian thực</div>
               </div>
             </div>
           </div>

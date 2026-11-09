@@ -17,25 +17,25 @@ export default function CourtCard({
   const reviewCount = Number(court.reviewCount || 0);
   const hasRealSlotsInfo = court.availabilityDate || typeof court.availableSlotCount === 'number';
 
-  let availabilityBadgeClass = 'bg-success';
-  let availabilityLabel = 'Sân trống';
+  let availabilityTextClass = 'text-success';
+  let availabilityLabel = 'Còn sân';
   if (hasRealSlotsInfo) {
     if (totalSlots === 0) {
-      availabilityBadgeClass = 'bg-secondary';
+      availabilityTextClass = 'text-muted';
       availabilityLabel = 'Chưa mở giờ';
     } else if (availCount > 0) {
-      availabilityBadgeClass = 'bg-success';
+      availabilityTextClass = 'text-success';
       availabilityLabel = `Còn ${availCount}/${totalSlots} ca`;
     } else {
-      availabilityBadgeClass = 'bg-danger';
+      availabilityTextClass = 'text-danger';
       availabilityLabel = 'Hết chỗ';
     }
   }
 
   return (
-    <div className="col-lg-4 col-md-6 mb-4">
+    <div className="col-lg-4 col-md-6">
       <div className="card h-100 court-card">
-        {/* Card Image / Preview with Badges */}
+        {/* Card Image */}
         <div className="court-card-img-wrapper position-relative">
           {court.imageUrl && !imgError ? (
             <img
@@ -53,108 +53,81 @@ export default function CourtCard({
               style={{ cursor: 'pointer' }}
               onClick={() => onBookNow(court)}
             >
-              <i className="bi bi-building fs-1 opacity-75 mb-1"></i>
-              <span className="small fw-semibold opacity-90 text-truncate px-3" style={{ maxWidth: '100%' }}>
+              <i className="bi bi-building fs-2 mb-1"></i>
+              <span className="small fw-medium text-truncate px-3" style={{ maxWidth: '100%' }}>
                 {court.category || 'Sân thể thao'}
               </span>
             </div>
           )}
 
-          {/* Bottom overlay frame with real slot availability for chosen date */}
-          <div
-            className="position-absolute bottom-0 start-0 end-0 m-2 p-2 rounded-3 bg-white bg-opacity-95 shadow-sm d-flex align-items-center justify-content-between"
-            style={{ backdropFilter: 'blur(4px)', fontSize: '0.72rem' }}
-          >
-            <div className="d-flex align-items-center gap-1 min-w-0">
-              <span className={`badge ${availabilityBadgeClass} py-1 px-1 flex-shrink-0`} style={{ fontSize: '0.62rem' }}>
-                {availabilityLabel}
-              </span>
-              <span className="fw-semibold text-dark text-truncate" style={{ maxWidth: '125px' }}>
-                {court.subCourtCount > 0 ? `${court.subCourtCount} sân con` : court.name}
-              </span>
-            </div>
-            <span className="text-success fw-bold flex-shrink-0 ms-1">{court.openTime || 'Mở cả ngày'}</span>
-          </div>
-
-          {/* Category Tag */}
-          <div className="position-absolute top-0 start-0 m-3">
-            <span className="badge-sport text-uppercase shadow-sm">
+          {/* Crisp Category Tag */}
+          <div className="position-absolute top-0 start-0 m-2 p-1">
+            <span className="court-category-pill">
               {court.category}
             </span>
           </div>
 
-          {/* Rating & Favorite Heart Controls */}
-          <div className="position-absolute top-0 end-0 m-3 d-flex align-items-center gap-2">
-            <div className="badge bg-white text-dark shadow-sm d-flex align-items-center gap-1 py-1 px-2 fw-semibold">
-              <i className="bi bi-star-fill text-warning"></i>
-              <span>{reviewCount > 0 ? (court.ratingFormatted || court.rating) : 'Mới'}</span>
-              {reviewCount > 0 && <span className="text-muted small">({reviewCount})</span>}
-            </div>
-
-            {onToggleFavorite && (
-              <button
-                type="button"
-                className={`btn btn-sm rounded-circle shadow-sm p-0 d-inline-flex align-items-center justify-content-center ${
-                  isFavorite ? 'btn-danger text-white' : 'btn-light text-danger'
-                }`}
-                style={{ width: '30px', height: '30px' }}
-                title={isFavorite ? 'Bỏ khỏi sân yêu thích' : 'Lưu sân yêu thích'}
-                aria-label={isFavorite ? 'Bỏ lưu sân yêu thích' : 'Lưu sân yêu thích'}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleFavorite(court);
-                }}
-              >
-                <i className={`bi ${isFavorite ? 'bi-heart-fill' : 'bi-heart'} small`}></i>
-              </button>
-            )}
-          </div>
+          {/* Favorite Heart */}
+          {onToggleFavorite && (
+            <button
+              type="button"
+              className={`court-fav-btn btn btn-sm rounded-circle position-absolute top-0 end-0 m-2 p-0 d-inline-flex align-items-center justify-content-center border-0 ${
+                isFavorite ? 'bg-danger text-white' : 'bg-white text-secondary'
+              }`}
+              title={isFavorite ? 'Bỏ lưu sân yêu thích' : 'Lưu sân yêu thích'}
+              aria-label={isFavorite ? 'Bỏ lưu sân yêu thích' : 'Lưu sân yêu thích'}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFavorite(court);
+              }}
+            >
+              <i className={`bi ${isFavorite ? 'bi-heart-fill' : 'bi-heart'} small`}></i>
+            </button>
+          )}
         </div>
 
         {/* Card Body */}
-        <div className="card-body d-flex flex-column p-4">
-          <h5
-            className="card-title fw-bold text-brand-dark mb-2 line-clamp-1"
-            title={court.name}
-            style={{ cursor: 'pointer' }}
-            onClick={() => onBookNow(court)}
-          >
-            {court.name}
-          </h5>
+        <div className="card-body d-flex flex-column p-3">
+          <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
+            <h5
+              className="card-title h6 fw-bold text-dark mb-0 text-truncate"
+              title={court.name}
+              style={{ cursor: 'pointer' }}
+              onClick={() => onBookNow(court)}
+            >
+              {court.name}
+            </h5>
+            <span className="d-inline-flex align-items-center gap-1 small fw-semibold text-dark flex-shrink-0">
+              <i className="bi bi-star-fill text-warning" style={{ fontSize: '0.78rem' }}></i>
+              <span>{reviewCount > 0 ? (court.ratingFormatted || court.rating) : 'Mới'}</span>
+            </span>
+          </div>
 
-          <p className="card-text text-muted small mb-3 d-flex align-items-start gap-1">
-            <i className="bi bi-geo-alt text-brand flex-shrink-0 mt-1"></i>
-            <span className="text-truncate">{court.address || 'Chưa cập nhật địa chỉ'}</span>
+          <p className="text-muted small mb-2 text-truncate" title={court.address}>
+            <i className="bi bi-geo-alt me-1"></i>
+            {court.address || 'Chưa cập nhật địa chỉ'}
           </p>
 
-          <div className="d-flex flex-wrap gap-2 mb-4">
-            {court.amenities && court.amenities.map((amenity, idx) => (
-              <span key={idx} className="amenity-chip">
-                {amenity}
-              </span>
-            ))}
+          <div className="small mb-3 d-flex flex-wrap align-items-center gap-2 text-muted">
+            <span className={`fw-semibold ${availabilityTextClass}`}>{availabilityLabel}</span>
+            {court.subCourtCount > 0 && <span>• {court.subCourtCount} sân</span>}
+            {court.openTime && <span>• {court.openTime}</span>}
           </div>
 
           <div className="d-flex align-items-center justify-content-between mt-auto pt-3 border-top">
             <div>
-              <span className="d-block text-muted" style={{ fontSize: '0.75rem' }}>Giá thuê chỉ từ</span>
-              <div className="d-flex align-items-baseline gap-1">
-                <span className="fw-bold fs-5 text-brand-dark">
-                  {court.priceFormatted || `${Number(court.pricePerHour || 0).toLocaleString('vi-VN')}đ`}
-                </span>
-                <span className="text-muted small">/giờ</span>
-              </div>
+              <span className="fw-bold text-dark fs-6">
+                {court.priceFormatted || `${Number(court.pricePerHour || 0).toLocaleString('vi-VN')}đ`}
+              </span>
+              <span className="text-muted small"> / giờ</span>
             </div>
 
             <button
-              className="btn btn-xem-san"
+              type="button"
+              className="btn btn-link p-0 text-decoration-none fw-semibold text-brand-dark small"
               onClick={() => onBookNow(court)}
-              title="Xem chi tiết sân và đặt lịch"
             >
-              <span>Xem sân</span>
-              <span className="xem-san-icon">
-                <i className="bi bi-chevron-right"></i>
-              </span>
+              Xem sân <i className="bi bi-arrow-right ms-1"></i>
             </button>
           </div>
         </div>
