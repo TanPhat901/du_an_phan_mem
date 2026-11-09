@@ -11,11 +11,12 @@ import MyBookingsPage from './components/MyBookingsPage';
 import AuthPage from './components/AuthPage';
 import CourtDetailPage from './components/CourtDetailPage';
 import OwnerDashboard from './components/OwnerDashboard';
+import AdminDashboard from './components/AdminDashboard';
 import ProfilePage from './components/ProfilePage';
 import { formatLocalYMD, getStoredToken } from './utils/vietqr';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('home'); // 'home' | 'login' | 'register' | 'register-owner' | 'profile' | 'owner-dashboard' | 'court-detail' | 'my-bookings'
+  const [currentView, setCurrentView] = useState('home'); // 'home' | 'login' | 'register' | 'register-owner' | 'profile' | 'owner-dashboard' | 'admin-dashboard' | 'court-detail' | 'my-bookings'
   const [currentUser, setCurrentUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
 
@@ -381,6 +382,13 @@ export default function App() {
     const { token, ...user } = userData;
     setCurrentUser(user);
     localStorage.setItem('sportsbooking_user', JSON.stringify(user));
+    if (userData.role === 'ADMIN') {
+      setPostAuthReturnCourt(null);
+      setPostAuthReturnView(null);
+      showNotification(`Chào mừng Quản trị viên ${userData.fullName}.`);
+      setCurrentView('admin-dashboard');
+      return;
+    }
     if (userData.role === 'OWNER') {
       setPostAuthReturnCourt(null);
       setPostAuthReturnView(null);
@@ -465,6 +473,7 @@ export default function App() {
           onOpenAuth={(mode) => openAuthView(mode)}
           onOpenMyBookings={openMyBookingsPage}
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+          onOpenAdminDashboard={() => setCurrentView('admin-dashboard')}
           onOpenProfile={() => setCurrentView('profile')}
           onGoHome={navigateToHome}
           activeTab={activeTab}
@@ -505,6 +514,7 @@ export default function App() {
           onOpenAuth={(mode) => openAuthView(mode, null, 'my-bookings')}
           onOpenMyBookings={openMyBookingsPage}
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+          onOpenAdminDashboard={() => setCurrentView('admin-dashboard')}
           onOpenProfile={() => setCurrentView('profile')}
           onGoHome={navigateToHome}
           activeTab="bookings"
@@ -571,6 +581,24 @@ export default function App() {
     );
   }
 
+  // If in Admin Dashboard mode
+  if (currentView === 'admin-dashboard') {
+    return (
+      <AdminDashboard
+        onOpenAuth={(mode) => openAuthView(mode)}
+        onOpenProfile={() => setCurrentView('profile')}
+        onOpenMyBookings={openMyBookingsPage}
+        onOpenCourt={(cId) => openCourtById(cId)}
+        currentUser={currentUser}
+        onBackToHome={() => navigateToHome('home')}
+        onLogout={() => {
+          handleLogout();
+          navigateToHome('home');
+        }}
+      />
+    );
+  }
+
   // If in Court Detail Page mode
   if (currentView === 'court-detail') {
     const isDetailFav = favoriteCourtIds.includes(Number(selectedCourtDetail?.id));
@@ -582,6 +610,7 @@ export default function App() {
           onOpenAuth={(mode) => openAuthView(mode, selectedCourtDetail)}
           onOpenMyBookings={openMyBookingsPage}
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+          onOpenAdminDashboard={() => setCurrentView('admin-dashboard')}
           onOpenProfile={() => setCurrentView('profile')}
           onGoHome={navigateToHome}
           activeTab="search"
@@ -665,6 +694,7 @@ export default function App() {
         onOpenAuth={(mode) => openAuthView(mode)}
         onOpenMyBookings={openMyBookingsPage}
         onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+        onOpenAdminDashboard={() => setCurrentView('admin-dashboard')}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         activeView="home"

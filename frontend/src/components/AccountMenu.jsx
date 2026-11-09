@@ -6,6 +6,7 @@ export default function AccountMenu({
   facilityName = '',
   onGoHome,
   onOpenOwnerDashboard,
+  onOpenAdminDashboard,
   onOpenProfile,
   onOpenMyBookings,
   onLogout,
@@ -36,9 +37,10 @@ export default function AccountMenu({
   if (!currentUser) return null;
 
   const isOwner = currentUser.role === 'OWNER';
+  const isAdmin = currentUser.role === 'ADMIN';
   const avatarBg = isOwner
     ? '#0b4d3c'
-    : currentUser.role === 'ADMIN'
+    : isAdmin
       ? '#dc2626'
       : '#10b981';
 
@@ -118,6 +120,55 @@ export default function AccountMenu({
               )}
             </div>
           </div>
+
+          {/* Admin View Switcher Options: Trang chủ <-> Quản trị hệ thống */}
+          {isAdmin && (
+            <>
+              {onGoHome && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`dropdown-item rounded-3 py-2 px-3 d-flex align-items-center justify-content-between gap-2 small fw-medium ${
+                    activeView === 'home' ? 'active-option' : ''
+                  }`}
+                  onClick={() => triggerAction(() => onGoHome('home'))}
+                >
+                  <span className="d-flex align-items-center gap-2">
+                    <i className="bi bi-house-door-fill text-brand fs-6"></i>
+                    <span>Xem Trang chủ</span>
+                  </span>
+                  {activeView === 'home' && (
+                    <span className="badge bg-success-subtle text-success" style={{ fontSize: '0.62rem' }}>
+                      Đang xem
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {onOpenAdminDashboard && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`dropdown-item rounded-3 py-2 px-3 d-flex align-items-center justify-content-between gap-2 small fw-medium ${
+                    activeView === 'admin-dashboard' ? 'active-option' : ''
+                  }`}
+                  onClick={() => triggerAction(onOpenAdminDashboard)}
+                >
+                  <span className="d-flex align-items-center gap-2">
+                    <i className="bi bi-shield-lock-fill text-brand-dark fs-6"></i>
+                    <span>Quản trị hệ thống</span>
+                  </span>
+                  {activeView === 'admin-dashboard' && (
+                    <span className="badge bg-success-subtle text-success" style={{ fontSize: '0.62rem' }}>
+                      Đang xem
+                    </span>
+                  )}
+                </button>
+              )}
+
+              <div className="dropdown-divider my-1"></div>
+            </>
+          )}
 
           {/* Owner View Switcher Options: Trang chủ <-> Quản lý sân */}
           {isOwner && (

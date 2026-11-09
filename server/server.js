@@ -8,6 +8,7 @@ const bookingRoutes = require('./routes/bookingRoutes');
 const authRoutes = require('./routes/authRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const ownerCourtRoutes = require('./routes/ownerCourtRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -22,6 +23,7 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/owner', ownerCourtRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check endpoint with DB status
 app.get('/api/health', (req, res) => {

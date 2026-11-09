@@ -5,6 +5,7 @@ export default function Navbar({
   onOpenAuth,
   onOpenMyBookings,
   onOpenOwnerDashboard,
+  onOpenAdminDashboard,
   activeTab,
   setActiveTab,
   activeView = 'home',
@@ -78,6 +79,7 @@ export default function Navbar({
               activeView={activeView}
               onGoHome={onGoHome}
               onOpenOwnerDashboard={onOpenOwnerDashboard}
+              onOpenAdminDashboard={onOpenAdminDashboard}
               onOpenProfile={onOpenProfile}
               onOpenMyBookings={onOpenMyBookings}
               onLogout={onLogout}
