@@ -296,6 +296,18 @@ export default function App() {
     localStorage.setItem('sportsbooking_user', JSON.stringify({ ...currentUser, ...user }));
   };
 
+  const navigateToHome = (targetTab = 'home') => {
+    setCurrentView('home');
+    setActiveTab(targetTab === 'search' ? 'search' : 'home');
+    if (targetTab === 'search') {
+      setTimeout(() => {
+        document.getElementById('search-section')?.scrollIntoView({ behavior: 'smooth' });
+      }, 60);
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   if (!authReady) return <div className="container py-5">Đang xác minh phiên đăng nhập...</div>;
 
   // Personal profile page
@@ -310,9 +322,10 @@ export default function App() {
           onOpenMyBookings={() => setShowMyBookings(true)}
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
           onOpenProfile={() => setCurrentView('profile')}
-          onGoHome={() => setCurrentView('home')}
+          onGoHome={navigateToHome}
           activeTab={activeTab}
           setActiveTab={setActiveTab}
+          activeView="profile"
           currentUser={currentUser}
           onLogout={() => { handleLogout(); setCurrentView('home'); }}
         />
@@ -359,11 +372,9 @@ export default function App() {
     return (
       <OwnerDashboard
         onOpenAuth={(mode) => setCurrentView(mode)}
+        onOpenProfile={() => setCurrentView('profile')}
         currentUser={currentUser}
-        onBackToHome={() => {
-          setCurrentView('home');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
+        onBackToHome={() => navigateToHome('home')}
         onLogout={handleLogout}
       />
     );
@@ -385,14 +396,24 @@ export default function App() {
           </div>
         )}
 
+        <Navbar
+          onOpenAuth={(mode) => setCurrentView(mode)}
+          onOpenMyBookings={() => setShowMyBookings(true)}
+          onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+          onOpenProfile={() => setCurrentView('profile')}
+          onGoHome={navigateToHome}
+          activeTab="search"
+          setActiveTab={setActiveTab}
+          activeView="court-detail"
+          currentUser={currentUser}
+          onLogout={handleLogout}
+        />
+
         <CourtDetailPage
           court={selectedCourtDetail}
           initialDate={playDate}
           availabilityRefreshKey={availabilityRefreshKey}
-          onBackToHome={() => {
-            setCurrentView('home');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
+          onBackToHome={() => navigateToHome('home')}
           onProceedBooking={(bookingPlan) => {
             setSelectedCourtForBooking({
               id: bookingPlan.courtId || selectedCourtDetail?.id || 1,
@@ -409,9 +430,6 @@ export default function App() {
               availableSlots: [bookingPlan.timeSlot]
             });
           }}
-          currentUser={currentUser}
-          onOpenAuth={(mode) => setCurrentView(mode)}
-          onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
         />
 
         <Footer
@@ -426,6 +444,18 @@ export default function App() {
             onClose={() => setSelectedCourtForBooking(null)}
             onBookingSuccess={handleBookingSuccess}
             onSlotConflict={() => setAvailabilityRefreshKey(k => k + 1)}
+          />
+        )}
+
+        {showMyBookings && (
+          <MyBookingsModal
+            bookings={bookings}
+            loading={bookingsLoading}
+            currentUser={currentUser}
+            onRefreshBookings={loadMyBookings}
+            onLookupByPhone={lookupBookingsByPhone}
+            onCancelSuccess={handleCancelSuccess}
+            onClose={() => setShowMyBookings(false)}
           />
         )}
       </div>
@@ -461,10 +491,11 @@ export default function App() {
         onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        activeView="home"
         currentUser={currentUser}
         onLogout={handleLogout}
         onOpenProfile={() => setCurrentView('profile')}
-        onGoHome={() => setCurrentView('home')}
+        onGoHome={navigateToHome}
       />
 
       <main className="flex-grow-1">

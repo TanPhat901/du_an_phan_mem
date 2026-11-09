@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import AccountMenu from './AccountMenu';
 
 const FACILITY_FALLBACK_IMAGES = [
   "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&q=80",
@@ -20,7 +21,7 @@ const formatCompactMoney = (amount) => {
   return `${num}đ`;
 };
 
-export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, onOpenAuth }) {
+export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, onOpenAuth, onOpenProfile }) {
   // Navigation active tab
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'courts' | 'schedule' | 'finance' | 'settings'
 
@@ -843,40 +844,17 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
               </div>
             </div>
 
-            {/* Quick Actions & User Profile */}
+            {/* Account Icon Options (Facebook-style compact trigger) */}
             <div className="d-flex align-items-center gap-2 ms-auto">
-              <button
-                type="button"
-                className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1 rounded-3"
-                onClick={onBackToHome}
-                title="Quay lại giao diện người đặt sân thể thao"
-              >
-                <i className="bi bi-box-arrow-up-right"></i>
-                <span className="d-none d-sm-inline">Xem Trang Khách Đặt</span>
-              </button>
-
-              <div className="d-flex align-items-center gap-2 ps-2 border-start">
-                <div
-                  className="rounded-circle bg-brand-dark text-white fw-bold d-flex align-items-center justify-content-center shadow-sm"
-                  style={{ width: '34px', height: '34px' }}
-                >
-                  {currentUser?.fullName ? currentUser.fullName.charAt(0).toUpperCase() : 'O'}
-                </div>
-                <div className="d-none d-md-block text-start lh-1">
-                  <div className="small fw-bold text-dark">{currentUser?.fullName || currentFacility?.ownerName}</div>
-                  <span className="text-muted" style={{ fontSize: '0.7rem' }}>Chủ sân đối tác ✅</span>
-                </div>
-                {onLogout && (
-                  <button
-                    type="button"
-                    className="btn btn-link text-danger p-0 ms-1"
-                    title="Đăng xuất"
-                    onClick={onLogout}
-                  >
-                    <i className="bi bi-power fs-5"></i>
-                  </button>
-                )}
-              </div>
+              <AccountMenu
+                currentUser={currentUser}
+                activeView="owner-dashboard"
+                facilityName={currentFacility?.name || ''}
+                onGoHome={() => onBackToHome?.()}
+                onOpenOwnerDashboard={() => setActiveTab('overview')}
+                onOpenProfile={onOpenProfile}
+                onLogout={onLogout}
+              />
             </div>
 
           </div>

@@ -46,10 +46,7 @@ export default function CourtDetailPage({
   initialDate,
   availabilityRefreshKey = 0,
   onBackToHome,
-  onProceedBooking,
-  currentUser,
-  onOpenAuth,
-  onOpenOwnerDashboard
+  onProceedBooking
 }) {
   const courtId = court?.id || 1;
   const [detail, setDetail] = useState(court || null);
@@ -189,61 +186,7 @@ export default function CourtDetailPage({
     : selectedSubCourt?.normalPrice || detail?.pricePerHour || 200000;
 
   return (
-    <div className="bg-light min-vh-100 pb-5">
-      {/* Top Header Navbar */}
-      <header className="navbar navbar-expand-lg bg-white border-bottom sticky-top py-3">
-        <div className="container">
-          <a
-            className="navbar-brand d-flex align-items-center gap-2"
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              onBackToHome();
-            }}
-          >
-            <div className="d-flex align-items-center justify-content-center bg-brand-light rounded-circle" style={{ width: '38px', height: '38px' }}>
-              <i className="bi bi-trophy-fill text-brand fs-5"></i>
-            </div>
-            <span className="fw-bold fs-4 text-brand-dark tracking-tight">SportsBooking</span>
-          </a>
-
-          <div className="d-none d-lg-flex align-items-center gap-4 mx-auto">
-            <a href="#home" onClick={(e) => { e.preventDefault(); onBackToHome(); }} className="nav-link-custom">Trang chủ</a>
-            <a href="#courts" onClick={(e) => { e.preventDefault(); onBackToHome(); }} className="nav-link-custom active">Tìm sân</a>
-            {currentUser?.role === 'OWNER' && onOpenOwnerDashboard && (
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-success rounded-pill px-3"
-                onClick={onOpenOwnerDashboard}
-              >
-                <i className="bi bi-buildings-fill me-1"></i>Kênh Chủ Sân
-              </button>
-            )}
-          </div>
-
-          <div className="d-flex align-items-center gap-3">
-            {currentUser ? (
-              <div className="d-flex align-items-center gap-2">
-                <div className="rounded-circle bg-brand-dark text-white fw-bold d-flex align-items-center justify-content-center" style={{ width: '36px', height: '36px' }}>
-                  {currentUser.fullName ? currentUser.fullName.charAt(0).toUpperCase() : 'U'}
-                </div>
-                <span className="small fw-bold text-dark d-none d-sm-inline">{currentUser.fullName}</span>
-              </div>
-            ) : (
-              <>
-                <button className="btn btn-link text-decoration-none text-dark fw-semibold p-0" onClick={() => onOpenAuth('login')}>
-                  <i className="bi bi-person fs-5 me-1"></i>
-                  <span>Đăng nhập</span>
-                </button>
-                <button className="btn btn-brand" onClick={() => onOpenAuth('register')}>
-                  Đăng ký
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
-
+    <div className="bg-light flex-grow-1 pb-5">
       {/* Main Container */}
       <div className="container py-4">
         {/* Breadcrumb & Action Row */}

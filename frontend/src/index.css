@@ -954,3 +954,51 @@ body {
 .profile-field{display:block;margin-bottom:22px}.profile-field>span{display:block;font-weight:700;font-size:13px;margin-bottom:9px}.profile-field b{color:#d93749}.profile-input-wrap{display:flex;align-items:center;gap:12px;border-radius:10px;background:#eff1ff;padding:0 14px;min-height:48px}.profile-input-wrap i{color:#63716c}.profile-input-wrap input{width:100%;background:transparent;border:0;outline:0;min-width:0;color:#24342f;font-size:14px}.profile-input-wrap:focus-within{outline:2px solid #0c7c55;outline-offset:1px}.profile-field small{display:block;color:#67776e;font-size:11px;margin-top:8px}
 .profile-actions{display:flex;justify-content:flex-end;align-items:center;gap:18px;margin-top:30px}.profile-cancel{background:transparent;border:0;color:#31403b;padding:10px 12px}.profile-save{background:#086641;color:white;border:0;border-radius:10px;padding:12px 19px;font-weight:700}.profile-save:hover{background:#075337}
 @media(max-width:575px){.profile-summary{align-items:flex-start;padding:16px;gap:12px}.profile-avatar{width:54px;height:54px;font-size:23px}.profile-card{border-radius:14px}.profile-actions{gap:8px}}
+
+/* Navbar compact Facebook-style account icon & options menu */
+.account-icon-btn {
+  width: 40px;
+  height: 40px;
+  background-color: #f1f5f9 !important;
+  border: 1.5px solid #e2e8f0 !important;
+  transition: all 0.15s ease;
+}
+.account-icon-btn:hover,
+.account-icon-btn.open {
+  background-color: #e2e8f0 !important;
+  border-color: var(--primary-green) !important;
+}
+.account-icon-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: #e2e8f0;
+  border: 2px solid #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  color: #111827;
+}
+.account-dropdown-menu {
+  position: absolute;
+  right: 0;
+  left: auto;
+  top: 100%;
+  min-width: 260px;
+  max-width: calc(100vw - 24px);
+  z-index: 1060;
+  border-color: #e5e7eb !important;
+}
+.account-dropdown-menu .dropdown-item:hover,
+.account-dropdown-menu .dropdown-item.active-option {
+  background-color: #f0fdf4;
+  color: var(--primary-green);
+}
+.account-dropdown-menu .dropdown-item.text-danger:hover {
+  background-color: #fef2f2;
+  color: #dc2626 !important;
+}

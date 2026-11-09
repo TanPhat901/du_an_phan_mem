@@ -1,163 +1,179 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import AccountMenu from './AccountMenu';
 
-export default function Navbar({ onOpenAuth, onOpenMyBookings, onOpenOwnerDashboard, activeTab, setActiveTab, currentUser, onLogout, onOpenProfile, onGoHome }) {
+export default function Navbar({
+  onOpenAuth,
+  onOpenMyBookings,
+  onOpenOwnerDashboard,
+  activeTab,
+  setActiveTab,
+  activeView = 'home',
+  currentUser,
+  onLogout,
+  onOpenProfile,
+  onGoHome
+}) {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setMobileNavOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, []);
+
+  const handleNavHome = (e) => {
+    e.preventDefault();
+    setActiveTab('home');
+    setMobileNavOpen(false);
+    onGoHome?.('home');
+  };
+
+  const handleNavSearch = (e) => {
+    e.preventDefault();
+    setActiveTab('search');
+    setMobileNavOpen(false);
+    const searchEl = document.getElementById('search-section');
+    if (searchEl) {
+      searchEl.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      onGoHome?.('search');
+    }
+  };
+
+  const handleNavBookings = (e) => {
+    e.preventDefault();
+    setMobileNavOpen(false);
+    onOpenMyBookings?.();
+  };
+
   return (
-    <nav className="navbar navbar-expand-lg bg-white border-bottom sticky-top py-3">
+    <nav className="navbar navbar-expand-lg bg-white border-bottom sticky-top py-3" style={{ zIndex: 1030 }}>
       <div className="container">
         {/* Brand Logo */}
-        <a className="navbar-brand d-flex align-items-center gap-2" href="#" onClick={(e) => { e.preventDefault(); setActiveTab('home'); onGoHome?.(); }}>
-          <div className="d-flex align-items-center justify-content-center bg-brand-light rounded-circle" style={{ width: '38px', height: '38px' }}>
+        <a
+          className="navbar-brand d-flex align-items-center gap-2"
+          href="#home"
+          onClick={handleNavHome}
+        >
+          <div
+            className="d-flex align-items-center justify-content-center bg-brand-light rounded-circle"
+            style={{ width: '38px', height: '38px' }}
+          >
             <i className="bi bi-trophy-fill text-brand fs-5"></i>
           </div>
           <span className="fw-bold fs-4 text-brand-dark tracking-tight">SportsBooking</span>
         </a>
 
-        {/* Mobile Toggle */}
-        <button 
-          className="navbar-toggler border-0" 
-          type="button" 
-          data-bs-toggle="collapse" 
-          data-bs-target="#navbarContent"
-          aria-controls="navbarContent" 
-          aria-expanded="false" 
-          aria-label="Toggle navigation"
-        >
-          <span className="navbar-toggler-icon"></span>
-        </button>
+        {/* Right Controls (Facebook-style Account Icon + Mobile Menu Toggle) */}
+        <div className="d-flex align-items-center gap-2 order-lg-3">
+          {currentUser ? (
+            <AccountMenu
+              currentUser={currentUser}
+              activeView={activeView}
+              onGoHome={onGoHome}
+              onOpenOwnerDashboard={onOpenOwnerDashboard}
+              onOpenProfile={onOpenProfile}
+              onOpenMyBookings={onOpenMyBookings}
+              onLogout={onLogout}
+              onOptionSelect={() => setMobileNavOpen(false)}
+            />
+          ) : (
+            <div className="d-none d-lg-flex align-items-center gap-3">
+              <button
+                type="button"
+                className="btn btn-link text-decoration-none text-dark fw-semibold d-flex align-items-center gap-2 p-0"
+                onClick={() => onOpenAuth('login')}
+              >
+                <i className="bi bi-person fs-5"></i>
+                <span>Đăng nhập</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-brand"
+                onClick={() => onOpenAuth('register')}
+              >
+                Đăng ký
+              </button>
+            </div>
+          )}
 
-        {/* Nav Links */}
-        <div className="collapse navbar-collapse" id="navbarContent">
-          <ul className="navbar-nav mx-auto mb-2 mb-lg-0 gap-lg-3 align-items-lg-center">
+          {/* Mobile Toggle */}
+          <button
+            className="navbar-toggler border-0"
+            type="button"
+            onClick={() => setMobileNavOpen((prev) => !prev)}
+            aria-controls="navbarContent"
+            aria-expanded={mobileNavOpen}
+            aria-label="Toggle navigation"
+          >
+            <span className="navbar-toggler-icon"></span>
+          </button>
+        </div>
+
+        {/* Center Nav Links */}
+        <div
+          className={`collapse navbar-collapse order-lg-2 ${mobileNavOpen ? 'show' : ''}`}
+          id="navbarContent"
+        >
+          <ul className="navbar-nav mx-auto mb-2 mb-lg-0 gap-lg-3 align-items-lg-center pt-2 pt-lg-0">
             <li className="nav-item">
-              <a 
-                className={`nav-link nav-link-custom ${activeTab === 'home' ? 'active' : ''}`} 
+              <a
+                className={`nav-link nav-link-custom ${activeTab === 'home' ? 'active' : ''}`}
                 href="#home"
-                onClick={(e) => { e.preventDefault(); setActiveTab('home'); onGoHome?.(); }}
+                onClick={handleNavHome}
               >
                 Trang chủ
               </a>
             </li>
             <li className="nav-item">
-              <a 
-                className={`nav-link nav-link-custom ${activeTab === 'search' ? 'active' : ''}`} 
+              <a
+                className={`nav-link nav-link-custom ${activeTab === 'search' ? 'active' : ''}`}
                 href="#search-section"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setActiveTab('search');
-                  document.getElementById('search-section')?.scrollIntoView({ behavior: 'smooth' });
-                }}
+                onClick={handleNavSearch}
               >
                 Tìm sân
               </a>
             </li>
             <li className="nav-item">
-              <a 
-                className="nav-link nav-link-custom" 
+              <a
+                className="nav-link nav-link-custom"
                 href="#my-bookings"
-                onClick={(e) => {
-                  e.preventDefault();
-                  onOpenMyBookings();
-                }}
+                onClick={handleNavBookings}
               >
                 Lịch đặt
               </a>
             </li>
-            <li className="nav-item">
-              <button 
-                type="button"
-                className="btn btn-sm btn-outline-success rounded-pill fw-semibold d-flex align-items-center gap-1 px-3 py-1 shadow-xs"
-                onClick={onOpenOwnerDashboard}
-                title="Chuyển sang giao diện quản lý dành cho chủ sân thể thao"
-              >
-                <i className="bi bi-buildings-fill text-brand"></i>
-                <span>Kênh Chủ Sân</span>
-              </button>
-            </li>
           </ul>
 
-          {/* User Auth Buttons / Profile */}
-          <div className="d-flex align-items-center gap-3">
-            {currentUser ? (
-              <div className="d-flex align-items-center gap-2">
-                <button
-                  type="button"
-                  onClick={onOpenProfile}
-                  title="Mở hồ sơ cá nhân"
-                  aria-label="Mở hồ sơ cá nhân"
-                  className="border-0 p-0 rounded-circle d-flex align-items-center justify-content-center text-white fw-bold shadow-sm"
-                  style={{ width: '38px', height: '38px', backgroundColor: currentUser.role === 'OWNER' ? '#0b4d3c' : '#10b981', cursor: 'pointer' }}
-                >
-                  {currentUser.fullName ? currentUser.fullName.charAt(0).toUpperCase() : 'U'}
-                </button>
-                <div className="d-none d-sm-block text-start">
-                  <div className="d-flex align-items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={onOpenProfile}
-                      title="Xem hồ sơ cá nhân"
-                      className="btn btn-link p-0 small fw-bold text-dark text-decoration-none"
-                    >{currentUser.fullName || 'Tài khoản'}</button>
-                    <span 
-                      className={`badge rounded-pill ${currentUser.role === 'OWNER' ? 'bg-success text-white' : (currentUser.role === 'ADMIN' ? 'bg-danger text-white' : 'bg-light text-success border border-success-subtle')}`}
-                      style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem' }}
-                    >
-                      {currentUser.role === 'OWNER' ? '🏢 Chủ sân' : (currentUser.role === 'ADMIN' ? '👑 Admin' : '👤 Người chơi')}
-                    </span>
-                  </div>
-                  {currentUser.facilityName && (
-                    <div className="text-muted text-truncate" style={{ fontSize: '0.72rem', maxWidth: '150px' }}>
-                      {currentUser.facilityName}
-                    </div>
-                  )}
-                  <div className="d-flex align-items-center gap-2 mt-1 flex-wrap">
-                    <button
-                      type="button"
-                      className="btn btn-link p-0 text-success small text-decoration-none fw-bold"
-                      style={{ fontSize: '0.72rem' }}
-                      onClick={onOpenProfile}
-                    >
-                      <i className="bi bi-person-circle me-1"></i>Hồ sơ cá nhân
-                    </button>
-                    <span className="text-muted small">•</span>
-                    <button
-                      type="button"
-                      className="btn btn-link p-0 text-success small text-decoration-none fw-bold"
-                      style={{ fontSize: '0.72rem' }}
-                      onClick={onOpenOwnerDashboard}
-                    >
-                      Quản lý sân
-                    </button>
-                    <span className="text-muted small">•</span>
-                    <button 
-                      type="button" 
-                      className="btn btn-link p-0 text-danger small text-decoration-none d-flex align-items-center gap-1"
-                      style={{ fontSize: '0.72rem' }}
-                      onClick={onLogout}
-                    >
-                      <i className="bi bi-box-arrow-right"></i>
-                      <span>Đăng xuất</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                <button 
-                  className="btn btn-link text-decoration-none text-dark fw-semibold d-flex align-items-center gap-2 p-0"
-                  onClick={() => onOpenAuth('login')}
-                >
-                  <i className="bi bi-person fs-5"></i>
-                  <span>Đăng nhập</span>
-                </button>
-                <button 
-                  className="btn btn-brand"
-                  onClick={() => onOpenAuth('register')}
-                >
-                  Đăng ký
-                </button>
-              </>
-            )}
-          </div>
+          {/* Auth actions inside mobile collapsed drawer when not logged in */}
+          {!currentUser && (
+            <div className="d-flex d-lg-none align-items-center gap-2 pt-2 pb-1 border-top mt-2">
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm flex-grow-1"
+                onClick={() => {
+                  setMobileNavOpen(false);
+                  onOpenAuth('login');
+                }}
+              >
+                Đăng nhập
+              </button>
+              <button
+                type="button"
+                className="btn btn-brand btn-sm flex-grow-1"
+                onClick={() => {
+                  setMobileNavOpen(false);
+                  onOpenAuth('register');
+                }}
+              >
+                Đăng ký
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </nav>
