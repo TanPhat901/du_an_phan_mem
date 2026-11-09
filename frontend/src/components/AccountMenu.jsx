@@ -193,11 +193,20 @@ export default function AccountMenu({
             <button
               type="button"
               role="menuitem"
-              className="dropdown-item rounded-3 py-2 px-3 d-flex align-items-center gap-2 small fw-medium"
+              className={`dropdown-item rounded-3 py-2 px-3 d-flex align-items-center justify-content-between gap-2 small fw-medium ${
+                activeView === 'my-bookings' ? 'active-option' : ''
+              }`}
               onClick={() => triggerAction(onOpenMyBookings)}
             >
-              <i className="bi bi-calendar2-check text-primary fs-6"></i>
-              <span>Lịch đặt của tôi</span>
+              <span className="d-flex align-items-center gap-2">
+                <i className="bi bi-calendar2-check text-primary fs-6"></i>
+                <span>Lịch đặt của tôi</span>
+              </span>
+              {activeView === 'my-bookings' && (
+                <span className="badge bg-success-subtle text-success" style={{ fontSize: '0.62rem' }}>
+                  Đang xem
+                </span>
+              )}
             </button>
           )}
 

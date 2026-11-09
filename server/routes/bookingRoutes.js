@@ -4,8 +4,6 @@ const jwt = require('jsonwebtoken');
 const authMiddleware = require('../middleware/authMiddleware');
 const { pool, isDbConnected } = require('../config/db');
 
-let fallbackPartners = [];
-
 const formatLocalYMD = (dateObj = new Date()) => {
   const y = dateObj.getFullYear();
   const m = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -284,7 +282,7 @@ router.post('/', authMiddleware, async (req, res) => {
     // 2. Kiểm tra sân con nếu được chọn
     let resolvedSubCourtId = null;
     let resolvedSubCourtName = null;
-    let normalPrice = Number(courtRow.price_per_slot || 200000);
+    let normalPrice = Number(courtRow.price_per_slot || 0);
     let peakPrice = normalPrice;
 
     if (parsedSubCourtId) {
@@ -553,34 +551,6 @@ router.patch('/:id/cancel', authMiddleware, async (req, res) => {
   } finally {
     client.release();
   }
-});
-
-// POST /api/bookings/partner - Partner application
-router.post('/partner', async (req, res) => {
-  const { facilityName, ownerName, phone, address, courtCount } = req.body;
-  if (!facilityName || !ownerName || !phone) {
-    return res.status(400).json({
-      success: false,
-      message: 'Vui lòng điền đủ tên cụm sân, người đại diện và số điện thoại!'
-    });
-  }
-
-  const partnerId = `PTR-${Date.now()}`;
-  fallbackPartners.push({
-    id: partnerId,
-    facilityName,
-    ownerName,
-    phone,
-    address,
-    courtCount: courtCount || 1,
-    createdAt: new Date().toISOString()
-  });
-
-  res.status(201).json({
-    success: true,
-    message: 'Gửi yêu cầu hợp tác thành công! Đội ngũ SportsBooking sẽ liên hệ hỗ trợ bạn sớm nhất.',
-    data: { id: partnerId, facilityName, ownerName, phone }
-  });
 });
 
 module.exports = router;

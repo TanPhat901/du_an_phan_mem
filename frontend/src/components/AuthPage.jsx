@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function AuthPage({ 
   initialMode = 'register', 
@@ -14,6 +14,9 @@ export default function AuthPage({
   // Role: 'USER' (Người thuê sân - Mặc định) | 'OWNER' (Chủ sân)
   const [role, setRole] = useState(initialRole === 'OWNER' ? 'OWNER' : 'USER');
 
+  // Danh sách bộ môn thể thao thực tế từ PostgreSQL
+  const [sportTypeOptions, setSportTypeOptions] = useState([]);
+
   // ==========================================
   // 4 TRƯỜNG MẶC ĐỊNH (BASE FORM DÙNG CHUNG)
   // ==========================================
@@ -26,7 +29,8 @@ export default function AuthPage({
   // CÁC TRƯỜNG BỔ SUNG KHI CHỌN CHỦ SÂN (role === 'OWNER')
   // ==========================================
   const [courtName, setCourtName] = useState('');
-  const [sportType, setSportType] = useState('Padel & Pickleball');
+  const [sportTypeId, setSportTypeId] = useState('');
+  const [sportType, setSportType] = useState('');
   const [courtAddress, setCourtAddress] = useState('');
   const [managerName, setManagerName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
@@ -58,30 +62,26 @@ export default function AuthPage({
 
   const strength = getPasswordStrength(mode === 'login' ? loginPassword : password);
 
-  // Điền nhanh thông tin tài khoản mẫu để test
-  const handleQuickFill = (email, pwd, targetRole = 'USER') => {
-    setErrorMessage('');
-    setSuccessMessage('');
-    if (mode === 'login') {
-      setLoginInput(email);
-      setLoginPassword(pwd);
-    } else {
-      setRole(targetRole);
-      setEmailOrPhone(email);
-      setPassword(pwd);
-      setConfirmPassword(pwd);
-      if (targetRole === 'USER') {
-        setFullName('Nguyễn Văn An');
-      } else {
-        setFullName('Nguyễn Văn Thảo');
-        setManagerName('Nguyễn Văn Thảo');
-        setCourtName('The Yard Padel Club Thảo Điền');
-        setCourtAddress('28 Đường Quốc Hương, P. Thảo Điền, TP. Thủ Đức');
-        setContactPhone('0901234567');
-        setCourtDescription('Cụm 6 sân Padel & 4 sân Pickleball tiêu chuẩn quốc tế, đèn LED chuyên nghiệp.');
-      }
-    }
-  };
+  useEffect(() => {
+    let cancelled = false;
+    fetch('http://localhost:5000/api/courts/sport-types')
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        const rows = Array.isArray(json?.data) ? json.data : [];
+        setSportTypeOptions(rows);
+        if (rows.length > 0) {
+          setSportTypeId((prev) => prev || String(rows[0].sport_type_id));
+          setSportType((prev) => prev || rows[0].name || '');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSportTypeOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ==========================================
   // XỬ LÝ SUBMIT (ĐĂNG NHẬP HOẶC ĐĂNG KÝ)
@@ -153,24 +153,29 @@ export default function AuthPage({
           return;
         }
 
+        const isEmail = emailOrPhone.includes('@');
+        const cleanEmail = isEmail ? emailOrPhone.trim() : `${emailOrPhone.trim()}@owner.sportsbooking.vn`;
+        const cleanPhone = (contactPhone || (!isEmail ? emailOrPhone : '')).trim();
+        if (!cleanPhone) {
+          setErrorMessage('Vui lòng nhập Số điện thoại liên hệ.');
+          return;
+        }
+
         setLoading(true);
         try {
-          const isEmail = emailOrPhone.includes('@');
-          const cleanEmail = isEmail ? emailOrPhone : `${emailOrPhone}@owner.sportsbooking.vn`;
-          const cleanPhone = contactPhone || (!isEmail ? emailOrPhone : '0912345678');
-
           const response = await fetch('http://localhost:5000/api/auth/register-owner', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               email: cleanEmail,
               password,
-              representativeName: managerName || fullName,
+              representativeName: (managerName || fullName).trim(),
               phone: cleanPhone,
-              facilityName: courtName,
-              sportTypes: [sportType],
-              detailedAddress: courtAddress,
-              description: courtDescription,
+              facilityName: courtName.trim(),
+              sportTypeId: sportTypeId ? Number(sportTypeId) : undefined,
+              sportTypes: sportType ? [sportType] : [],
+              detailedAddress: courtAddress.trim(),
+              description: courtDescription.trim(),
               emailOrPhone: emailOrPhone.trim()
             })
           });
@@ -252,10 +257,9 @@ export default function AuthPage({
           </div>
 
           <div className="d-flex align-items-center gap-3">
-            <div className="d-flex align-items-center gap-1 text-muted small cursor-pointer">
+            <div className="d-flex align-items-center gap-1 text-muted small">
               <i className="bi bi-globe"></i>
               <span>Tiếng Việt</span>
-              <i className="bi bi-chevron-down" style={{ fontSize: '0.75rem' }}></i>
             </div>
             <div 
               className="rounded-circle d-flex align-items-center justify-content-center text-white shadow-sm" 
@@ -267,7 +271,7 @@ export default function AuthPage({
         </div>
       </header>
 
-      {/* Main Container - Giao diện 2 cột chuẩn thiết kế */}
+      {/* Main Container - Giao diện 2 cột */}
       <main className="flex-grow-1 d-flex align-items-center py-4 py-md-5">
         <div className="container">
           <div className="row justify-content-center">
@@ -285,76 +289,68 @@ export default function AuthPage({
                           className="d-inline-flex align-items-center gap-1 px-3 py-1 rounded-pill mb-4 shadow-sm"
                           style={{ backgroundColor: '#dcfce7', color: '#0b4d3c', fontSize: '0.75rem', fontWeight: 700 }}
                         >
-                          <i className="bi bi-lightning-charge-fill"></i>
-                          <span>HỆ THỐNG SÂN BÃI SỐ 1 VIỆT NAM</span>
+                          <i className="bi bi-trophy-fill"></i>
+                          <span>SPORTSBOOKING VIETNAM</span>
                         </div>
 
-                        {/* Promo Card: Giảm ngay 15% cho lần đặt đầu */}
+                        {/* Platform Overview Card */}
                         <div className="auth-promo-card mb-4 shadow-sm">
                           <div className="d-flex align-items-center gap-2 mb-2">
-                            <i className="bi bi-gift-fill text-warning"></i>
+                            <i className="bi bi-calendar2-check-fill text-warning"></i>
                             <span className="small text-uppercase fw-bold" style={{ color: '#86efac', letterSpacing: '0.04em', fontSize: '0.75rem' }}>
-                              ƯU ĐÃI CHÀO MỪNG TÂN THỦ
+                              ĐẶT SÂN TRỰC TUYẾN
                             </span>
                           </div>
                           <h4 className="fw-bold text-white mb-2" style={{ fontSize: '1.25rem' }}>
-                            GIẢM NGAY 15% CHO LẦN ĐẶT ĐẦU
+                            TÌM SÂN & GIỮ LỊCH NHANH CHÓNG
                           </h4>
                           <p className="text-white-50 mb-0 small" style={{ lineHeight: '1.5' }}>
-                            Nhập mã <strong className="text-warning">WELCOME2025</strong> ngay sau khi kích hoạt tài khoản thành công.
+                            Kiểm tra khung giờ trống theo thời gian thực, nhận vé QR và quản lý lịch đặt của bạn dễ dàng.
                           </p>
                         </div>
                       </div>
 
-                      {/* Middle Stats Section: 1.200+ sân & 50.000+ người chơi */}
+                      {/* Middle Highlights Section */}
                       <div className="my-auto">
                         <div className="d-flex gap-2 mb-4">
                           <div className="auth-stat-card shadow-sm">
                             <div className="d-flex align-items-center gap-2 mb-1">
-                              <i className="bi bi-geo-alt-fill text-success fs-5"></i>
-                              <span className="fs-5 fw-extrabold text-white">1.200+</span>
+                              <i className="bi bi-clock-history text-success fs-5"></i>
+                              <span className="fw-bold text-white" style={{ fontSize: '0.95rem' }}>Thời gian thực</span>
                             </div>
                             <div className="text-white-50 small" style={{ fontSize: '0.78rem' }}>
-                              Sân thi đấu hoạt động
+                              Hiển thị chính xác slot trống theo từng sân con
                             </div>
                           </div>
 
                           <div className="auth-stat-card shadow-sm">
                             <div className="d-flex align-items-center gap-2 mb-1">
-                              <i className="bi bi-people-fill text-success fs-5"></i>
-                              <span className="fs-5 fw-extrabold text-white">50.000+</span>
+                              <i className="bi bi-qr-code-scan text-success fs-5"></i>
+                              <span className="fw-bold text-white" style={{ fontSize: '0.95rem' }}>Vé điện tử QR</span>
                             </div>
                             <div className="text-white-50 small" style={{ fontSize: '0.78rem' }}>
-                              Người chơi thường xuyên
+                              Check-in thuận tiện khi đến sân thi đấu
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Bottom Testimonial Card */}
+                      {/* Bottom Process Card */}
                       <div className="auth-testimonial-card mt-auto shadow-sm">
-                        <div className="d-flex align-items-center gap-3">
-                          <img 
-                            src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80" 
-                            alt="Minh Hoàng" 
-                            className="rounded-circle flex-shrink-0"
-                            style={{ width: '42px', height: '42px', objectFit: 'cover', border: '2px solid #10b981' }}
-                          />
+                        <div className="d-flex align-items-start gap-3">
+                          <div
+                            className="rounded-circle bg-success bg-opacity-25 text-white d-flex align-items-center justify-content-center flex-shrink-0"
+                            style={{ width: '42px', height: '42px', border: '1px solid rgba(16, 185, 129, 0.5)' }}
+                          >
+                            <i className="bi bi-shield-check fs-5 text-success"></i>
+                          </div>
                           <div>
-                            <div className="d-flex align-items-center gap-1 text-warning mb-1" style={{ fontSize: '0.75rem' }}>
-                              <i className="bi bi-star-fill"></i>
-                              <i className="bi bi-star-fill"></i>
-                              <i className="bi bi-star-fill"></i>
-                              <i className="bi bi-star-fill"></i>
-                              <i className="bi bi-star-fill"></i>
-                              <span className="text-white fw-bold ms-1">5.0</span>
+                            <div className="text-white fw-bold small mb-1">
+                              Quy trình đặt sân & đánh giá minh bạch
                             </div>
-                            <p className="text-white mb-0 small fst-italic" style={{ fontSize: '0.82rem', lineHeight: '1.4' }}>
-                              "Đặt sân padel chỉ mất chưa đầy 30 giây, quá tiện lợi!"
+                            <p className="text-white-50 mb-0 small" style={{ fontSize: '0.8rem', lineHeight: '1.45' }}>
+                              Đặt lịch online, chủ sân xác nhận giữ chỗ, check-in tại quầy và mở quyền viết đánh giá thực tế sau lượt chơi.
                             </p>
-                            <span className="text-white-50" style={{ fontSize: '0.72rem' }}>
-                              Minh Hoàng - CLB Pickleball Sài Gòn
-                            </span>
                           </div>
                         </div>
                       </div>
@@ -372,11 +368,11 @@ export default function AuthPage({
                         style={{ backgroundColor: '#e8f5e9', color: '#0b4d3c', fontSize: '0.72rem', fontWeight: 700 }}
                       >
                         <i className="bi bi-stars"></i>
-                        <span>{mode === 'login' ? 'CỘNG ĐỒNG THỂ THAO #1' : 'GIA NHẬP CỘNG ĐỒNG THỂ THAO'}</span>
+                        <span>{mode === 'login' ? 'ĐĂNG NHẬP HỆ THỐNG' : 'TẠO TÀI KHOẢN SPORTSBOOKING'}</span>
                       </div>
                       <span className="text-muted small" style={{ fontSize: '0.75rem' }}>
                         <i className="bi bi-shield-lock-fill text-success me-1"></i>
-                        Bảo mật SSL 256-Bit
+                        Bảo mật thông tin tài khoản
                       </span>
                     </div>
 
@@ -386,7 +382,7 @@ export default function AuthPage({
                     <p className="text-muted small mb-3">
                       {mode === 'login' 
                         ? 'Chào mừng bạn quay trở lại với nền tảng đặt sân thể thao SportsBooking!' 
-                        : 'Tạo tài khoản SportsBooking chỉ trong 60 giây để tận hưởng ưu đãi đặt sân tức thì.'}
+                        : 'Tạo tài khoản SportsBooking để tìm sân và quản lý lịch đặt trực tuyến.'}
                     </p>
 
                     {/* Social Login Buttons (Google, Facebook, Apple) */}
@@ -434,8 +430,7 @@ export default function AuthPage({
                       {mode === 'login' ? 'HOẶC TIẾP TỤC VỚI EMAIL / SĐT' : 'HOẶC ĐIỀN THÔNG TIN BÊN DƯỚI'}
                     </div>
 
-                                         {/* Đăng nhập bằng tài khoản đã đăng ký trong PostgreSQL */}
-{/* Success Alert */}
+                    {/* Success Alert */}
                     {successMessage && (
                       <div className="alert alert-success py-2 small mb-3 d-flex align-items-center gap-2">
                         <i className="bi bi-check-circle-fill text-success fs-5"></i>
@@ -698,7 +693,7 @@ export default function AuthPage({
                                   <input
                                     type="text"
                                     className="form-control bg-white"
-                                    placeholder="VD: CLB Thể thao Sài Gòn Padel & Football Arena"
+                                    placeholder="VD: CLB Thể thao Padel & Football Arena"
                                     value={courtName}
                                     onChange={(e) => setCourtName(e.target.value)}
                                     required={role === 'OWNER'}
@@ -711,15 +706,24 @@ export default function AuthPage({
                                 <label className="form-label small fw-semibold text-muted mb-1">Loại hình thể thao *</label>
                                 <select 
                                   className="form-select bg-white"
-                                  value={sportType}
-                                  onChange={(e) => setSportType(e.target.value)}
+                                  value={sportTypeId}
+                                  onChange={(e) => {
+                                    const nextId = e.target.value;
+                                    setSportTypeId(nextId);
+                                    const found = sportTypeOptions.find((st) => String(st.sport_type_id) === String(nextId));
+                                    setSportType(found ? found.name : '');
+                                  }}
                                   required={role === 'OWNER'}
                                 >
-                                  <option value="Padel & Pickleball">Padel & Pickleball</option>
-                                  <option value="Bóng đá & Tennis">Bóng đá & Tennis</option>
-                                  <option value="Cầu lông trong nhà">Cầu lông trong nhà</option>
-                                  <option value="Bóng rổ">Bóng rổ</option>
-                                  <option value="Tổ hợp đa năng (Nhiều môn)">Tổ hợp đa năng (Nhiều môn)</option>
+                                  {sportTypeOptions.length === 0 ? (
+                                    <option value="">Đang tải danh sách bộ môn...</option>
+                                  ) : (
+                                    sportTypeOptions.map((st) => (
+                                      <option key={st.sport_type_id} value={st.sport_type_id}>
+                                        {st.name}
+                                      </option>
+                                    ))
+                                  )}
                                 </select>
                               </div>
 
@@ -839,12 +843,12 @@ export default function AuthPage({
                       <div className="d-flex align-items-center justify-content-center gap-3 pt-2 border-top text-muted small" style={{ fontSize: '0.75rem' }}>
                         <span className="d-flex align-items-center gap-1">
                           <i className="bi bi-shield-check text-success"></i>
-                          <span>Mã hóa SSL 256-bit</span>
+                          <span>Xác thực tài khoản an toàn</span>
                         </span>
                         <span>•</span>
                         <span className="d-flex align-items-center gap-1">
                           <i className="bi bi-lock-fill text-success"></i>
-                          <span>Bảo mật dữ liệu tuyệt đối</span>
+                          <span>Bảo mật dữ liệu người dùng</span>
                         </span>
                       </div>
                     </form>
@@ -861,13 +865,7 @@ export default function AuthPage({
       {/* Auth Footer */}
       <footer className="py-3 px-4 border-top bg-white mt-auto small text-muted">
         <div className="container-fluid d-flex flex-column flex-md-row justify-content-between align-items-center gap-2">
-          <span>© 2025 SportsBooking Vietnam. Tất cả quyền được bảo lưu.</span>
-          <div className="d-flex align-items-center gap-3">
-            <span>
-              <i className="bi bi-telephone-fill text-success me-1"></i>
-              Hotline hỗ trợ: <strong>1900 8899</strong>
-            </span>
-          </div>
+          <span>© 2026 SportsBooking. Nền tảng đặt sân thể thao trực tuyến.</span>
           <div className="d-flex align-items-center gap-3">
             <a href="#terms" className="text-muted text-decoration-none hover-dark">Điều khoản dịch vụ</a>
             <span>•</span>

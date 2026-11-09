@@ -46,9 +46,14 @@ export default function Navbar({
 
   const handleNavBookings = (e) => {
     e.preventDefault();
+    setActiveTab?.('bookings');
     setMobileNavOpen(false);
     onOpenMyBookings?.();
   };
+
+  const isHomeNavActive = activeView === 'home' && activeTab === 'home';
+  const isSearchNavActive = (activeView === 'home' && activeTab === 'search') || activeView === 'court-detail';
+  const isBookingsNavActive = activeView === 'my-bookings' || activeTab === 'bookings';
 
   return (
     <nav className="navbar navbar-expand-lg bg-white border-bottom sticky-top py-3" style={{ zIndex: 1030 }}>
@@ -122,7 +127,7 @@ export default function Navbar({
           <ul className="navbar-nav mx-auto mb-2 mb-lg-0 gap-lg-3 align-items-lg-center pt-2 pt-lg-0">
             <li className="nav-item">
               <a
-                className={`nav-link nav-link-custom ${activeTab === 'home' ? 'active' : ''}`}
+                className={`nav-link nav-link-custom ${isHomeNavActive ? 'active' : ''}`}
                 href="#home"
                 onClick={handleNavHome}
               >
@@ -131,7 +136,7 @@ export default function Navbar({
             </li>
             <li className="nav-item">
               <a
-                className={`nav-link nav-link-custom ${activeTab === 'search' ? 'active' : ''}`}
+                className={`nav-link nav-link-custom ${isSearchNavActive ? 'active' : ''}`}
                 href="#search-section"
                 onClick={handleNavSearch}
               >
@@ -140,7 +145,7 @@ export default function Navbar({
             </li>
             <li className="nav-item">
               <a
-                className="nav-link nav-link-custom"
+                className={`nav-link nav-link-custom ${isBookingsNavActive ? 'active' : ''}`}
                 href="#my-bookings"
                 onClick={handleNavBookings}
               >

@@ -1,23 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const fs = require('fs');
-const path = require('path');
 const jwt = require('jsonwebtoken');
 const authMiddleware = require('../middleware/authMiddleware');
 const { pool, isDbConnected } = require('../config/db');
-
-const courtsFilePath = path.join(__dirname, '../data/courts.json');
-
-const getCourtsFromFile = () => {
-  const data = fs.readFileSync(courtsFilePath, 'utf-8');
-  return JSON.parse(data);
-};
-
-const FACILITY_IMAGES = [
-  'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=800&q=80'
-];
 
 const formatLocalYMD = (dateObj = new Date()) => {
   const y = dateObj.getFullYear();
@@ -61,51 +46,43 @@ const extractOptionalUser = (req) => {
 
 // GET /api/courts/sport-types - Danh sách bộ môn thể thao đang hoạt động
 router.get('/sport-types', async (req, res) => {
-  if (isDbConnected()) {
-    try {
-      const result = await pool.query(
-        `SELECT sport_type_id, name, description
-         FROM sport_types
-         WHERE status = 'ACTIVE'
-         ORDER BY sport_type_id ASC`
-      );
-      return res.json({ success: true, data: result.rows });
-    } catch (err) {
-      console.warn('⚠️ Lỗi lấy sport_types:', err.message);
-    }
+  if (!isDbConnected()) {
+    return res.status(503).json({ success: false, message: 'Không thể kết nối cơ sở dữ liệu.' });
   }
-  return res.json({
-    success: true,
-    data: [
-      { sport_type_id: 1, name: 'PADEL & PICKLEBALL' },
-      { sport_type_id: 2, name: 'BÓNG ĐÁ & TENNIS' },
-      { sport_type_id: 3, name: 'CẦU LÔNG TRONG NHÀ' }
-    ]
-  });
+  try {
+    const result = await pool.query(
+      `SELECT sport_type_id, name, description
+       FROM sport_types
+       WHERE status = 'ACTIVE'
+       ORDER BY sport_type_id ASC`
+    );
+    return res.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('❌ Lỗi lấy sport_types:', err.message);
+    return res.status(500).json({ success: false, message: 'Không thể tải danh sách bộ môn thể thao.' });
+  }
 });
 
 // GET /api/courts/areas - Danh sách khu vực có sân đang mở
 router.get('/areas', async (req, res) => {
-  const fallbackAreas = ['TP. Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Bình Dương'];
-  if (isDbConnected()) {
-    try {
-      const result = await pool.query(
-        `SELECT DISTINCT TRIM(area) AS area
-         FROM courts
-         WHERE is_visible = TRUE
-           AND operational_status = 'ACTIVE'
-           AND area IS NOT NULL
-           AND TRIM(area) <> ''
-         ORDER BY area ASC`
-      );
-      const dbAreas = result.rows.map((r) => r.area);
-      const merged = Array.from(new Set([...dbAreas, ...fallbackAreas]));
-      return res.json({ success: true, data: merged });
-    } catch (err) {
-      console.warn('⚠️ Lỗi lấy danh sách khu vực:', err.message);
-    }
+  if (!isDbConnected()) {
+    return res.status(503).json({ success: false, message: 'Không thể kết nối cơ sở dữ liệu.' });
   }
-  return res.json({ success: true, data: fallbackAreas });
+  try {
+    const result = await pool.query(
+      `SELECT DISTINCT TRIM(area) AS area
+       FROM courts
+       WHERE is_visible = TRUE
+         AND operational_status = 'ACTIVE'
+         AND area IS NOT NULL
+         AND TRIM(area) <> ''
+       ORDER BY area ASC`
+    );
+    return res.json({ success: true, data: result.rows.map((r) => r.area) });
+  } catch (err) {
+    console.error('❌ Lỗi lấy danh sách khu vực:', err.message);
+    return res.status(500).json({ success: false, message: 'Không thể tải danh sách khu vực.' });
+  }
 });
 
 // GET /api/courts/favorites/my - Danh sách sân yêu thích của người dùng đang đăng nhập
@@ -123,6 +100,19 @@ router.get('/favorites/my', authMiddleware, async (req, res) => {
          c.address,
          c.area AS city,
          c.description,
+         COALESCE(
+           NULLIF(TRIM(c.image_url), ''),
+           (
+             SELECT NULLIF(TRIM(sc_img.image_url), '')
+             FROM sub_courts sc_img
+             WHERE sc_img.court_id = c.court_id
+               AND sc_img.status = 'ACTIVE'
+               AND sc_img.is_visible = TRUE
+               AND NULLIF(TRIM(sc_img.image_url), '') IS NOT NULL
+             ORDER BY sc_img.sub_court_id ASC
+             LIMIT 1
+           )
+         ) AS cover_image,
          COALESCE(sc_stats.min_price, c.price_per_slot) AS effective_min_price,
          COALESCE(sc_stats.sub_court_count, 0) AS sub_court_count,
          COALESCE(rv_stats.avg_rating, 0) AS avg_rating,
@@ -164,10 +154,8 @@ router.get('/favorites/my', authMiddleware, async (req, res) => {
       [userId]
     );
 
-    const fallbackCourts = getCourtsFromFile();
     const data = result.rows.map((row) => {
       const idNum = Number(row.id);
-      const fallback = fallbackCourts.find((f) => f.id === idNum);
       const minPriceVal = parseFloat(row.effective_min_price || 0);
       const reviewCount = Number(row.review_count || 0);
       const ratingNum = reviewCount > 0 ? parseFloat(row.avg_rating || 0) : 0;
@@ -176,11 +164,11 @@ router.get('/favorites/my', authMiddleware, async (req, res) => {
         id: idNum,
         name: row.name,
         category: row.category || 'THỂ THAO',
-        address: row.address,
-        city: row.city || 'TP. Hồ Chí Minh',
+        address: row.address || '',
+        city: row.city || '',
         pricePerHour: minPriceVal,
         priceFormatted: `${Number(minPriceVal).toLocaleString('vi-VN')}đ`,
-        imageUrl: fallback ? fallback.imageUrl : FACILITY_IMAGES[(idNum - 1) % FACILITY_IMAGES.length],
+        imageUrl: row.cover_image || null,
         subCourtCount: Number(row.sub_court_count || 0),
         openTime: row.open_time_range || 'Chưa thiết lập giờ',
         rating: ratingNum,
@@ -221,35 +209,51 @@ router.get('/', async (req, res) => {
   const authUser = extractOptionalUser(req);
   const userId = authUser ? authUser.userId : null;
 
-  if (isDbConnected()) {
-    try {
-      const values = [targetDate, userId];
-      let valIdx = 3;
+  if (!isDbConnected()) {
+    return res.status(503).json({ success: false, message: 'Không thể kết nối cơ sở dữ liệu.' });
+  }
 
-      let queryStr = `
-        SELECT
-          c.court_id AS id,
-          c.name,
-          st.name AS category,
-          c.address,
-          c.area AS city,
-          c.description,
-          c.price_per_slot AS price_per_hour,
-          c.operational_status,
-          c.is_visible,
-          c.created_at,
-          COALESCE(sc_stats.sub_court_count, 0) AS sub_court_count,
-          COALESCE(sc_stats.min_price, c.price_per_slot) AS effective_min_price,
-          ts_stats.open_time_range,
-          ts_stats.slot_labels,
-          COALESCE(ts_stats.total_slots, 0) AS total_slots,
-          COALESCE(avail_stats.available_slot_count, 0) AS available_slot_count,
-          COALESCE(rv_stats.avg_rating, 0) AS avg_rating,
-          COALESCE(rv_stats.review_count, 0) AS review_count,
-          COALESCE(fv_stats.favorites_count, 0) AS favorites_count,
-          CASE WHEN user_fv.favorite_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_favorite
-        FROM courts c
-        LEFT JOIN sport_types st ON c.sport_type_id = st.sport_type_id
+  try {
+    const values = [targetDate, userId];
+    let valIdx = 3;
+
+    let queryStr = `
+      SELECT
+        c.court_id AS id,
+        c.name,
+        st.name AS category,
+        c.address,
+        c.area AS city,
+        c.description,
+        c.price_per_slot AS price_per_hour,
+        COALESCE(
+          NULLIF(TRIM(c.image_url), ''),
+          (
+            SELECT NULLIF(TRIM(sc_img.image_url), '')
+            FROM sub_courts sc_img
+            WHERE sc_img.court_id = c.court_id
+              AND sc_img.status = 'ACTIVE'
+              AND sc_img.is_visible = TRUE
+              AND NULLIF(TRIM(sc_img.image_url), '') IS NOT NULL
+            ORDER BY sc_img.sub_court_id ASC
+            LIMIT 1
+          )
+        ) AS cover_image,
+        c.operational_status,
+        c.is_visible,
+        c.created_at,
+        COALESCE(sc_stats.sub_court_count, 0) AS sub_court_count,
+        COALESCE(sc_stats.min_price, c.price_per_slot) AS effective_min_price,
+        ts_stats.open_time_range,
+        ts_stats.slot_labels,
+        COALESCE(ts_stats.total_slots, 0) AS total_slots,
+        COALESCE(avail_stats.available_slot_count, 0) AS available_slot_count,
+        COALESCE(rv_stats.avg_rating, 0) AS avg_rating,
+        COALESCE(rv_stats.review_count, 0) AS review_count,
+        COALESCE(fv_stats.favorites_count, 0) AS favorites_count,
+        CASE WHEN user_fv.favorite_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_favorite
+      FROM courts c
+      LEFT JOIN sport_types st ON c.sport_type_id = st.sport_type_id
         LEFT JOIN (
           SELECT court_id,
                  COUNT(*) FILTER (WHERE status = 'ACTIVE' AND is_visible = TRUE) AS sub_court_count,
@@ -411,82 +415,51 @@ router.get('/', async (req, res) => {
           break;
       }
 
-      const result = await pool.query(queryStr, values);
-      const fallbackCourts = getCourtsFromFile();
+    const result = await pool.query(queryStr, values);
 
-      const courts = result.rows.map((row, idx) => {
-        const idNum = Number(row.id);
-        const fallback = fallbackCourts.find((f) => f.id === idNum) || fallbackCourts[idx % fallbackCourts.length];
-        const minPriceVal = parseFloat(row.effective_min_price || row.price_per_hour);
-        const reviewCount = Number(row.review_count || 0);
-        const ratingNum = reviewCount > 0 ? parseFloat(row.avg_rating || 0) : 0;
+    const courts = result.rows.map((row) => {
+      const idNum = Number(row.id);
+      const minPriceVal = parseFloat(row.effective_min_price ?? row.price_per_hour ?? 0);
+      const reviewCount = Number(row.review_count || 0);
+      const ratingNum = reviewCount > 0 ? parseFloat(row.avg_rating || 0) : 0;
 
-        return {
-          id: idNum,
-          name: row.name,
-          category: row.category || 'THỂ THAO',
-          sportType: row.category ? row.category.toLowerCase() : 'sport',
-          rating: ratingNum,
-          ratingFormatted: reviewCount > 0 ? ratingNum.toFixed(1) : 'Mới',
-          reviewCount,
-          favoritesCount: Number(row.favorites_count || 0),
-          isFavorite: Boolean(row.is_favorite),
-          address: row.address,
-          city: row.city || 'TP. Hồ Chí Minh',
-          pricePerHour: minPriceVal,
-          priceFormatted: `${Number(minPriceVal).toLocaleString('vi-VN')}đ`,
-          imageUrl: fallback ? fallback.imageUrl : FACILITY_IMAGES[(idNum - 1) % FACILITY_IMAGES.length],
-          amenities: row.description
-            ? row.description.split(',').map((s) => s.trim()).filter(Boolean)
-            : (fallback ? fallback.amenities : []),
-          subCourtCount: Number(row.sub_court_count || 0),
-          openTime: row.open_time_range || 'Chưa thiết lập giờ',
-          totalSlots: Number(row.total_slots || 0),
-          availableSlotCount: Number(row.available_slot_count || 0),
-          availabilityDate: targetDate,
-          featured: true,
-          availableSlots: Array.isArray(row.slot_labels) ? row.slot_labels : []
-        };
-      });
+      return {
+        id: idNum,
+        name: row.name,
+        category: row.category || 'THỂ THAO',
+        sportType: row.category ? row.category.toLowerCase() : 'sport',
+        rating: ratingNum,
+        ratingFormatted: reviewCount > 0 ? ratingNum.toFixed(1) : 'Mới',
+        reviewCount,
+        favoritesCount: Number(row.favorites_count || 0),
+        isFavorite: Boolean(row.is_favorite),
+        address: row.address || '',
+        city: row.city || '',
+        pricePerHour: minPriceVal,
+        priceFormatted: `${Number(minPriceVal).toLocaleString('vi-VN')}đ`,
+        imageUrl: row.cover_image || null,
+        amenities: row.description
+          ? row.description.split(',').map((s) => s.trim()).filter(Boolean)
+          : [],
+        subCourtCount: Number(row.sub_court_count || 0),
+        openTime: row.open_time_range || 'Chưa thiết lập giờ',
+        totalSlots: Number(row.total_slots || 0),
+        availableSlotCount: Number(row.available_slot_count || 0),
+        availabilityDate: targetDate,
+        featured: true,
+        availableSlots: Array.isArray(row.slot_labels) ? row.slot_labels : []
+      };
+    });
 
-      return res.json({
-        success: true,
-        source: 'PostgreSQL Database',
-        total: courts.length,
-        data: courts
-      });
-    } catch (err) {
-      console.warn('⚠️ Lỗi truy vấn PostgreSQL courts, dùng fallback:', err.message);
-    }
-  }
-
-  // Fallback
-  try {
-    let courts = getCourtsFromFile();
-    if (featured === 'true') courts = courts.filter((c) => c.featured);
-    if (keyword) {
-      const kw = keyword.toLowerCase().trim();
-      courts = courts.filter(
-        (c) =>
-          c.name.toLowerCase().includes(kw) ||
-          c.category.toLowerCase().includes(kw) ||
-          (c.sportType && c.sportType.toLowerCase().includes(kw)) ||
-          c.address.toLowerCase().includes(kw)
-      );
-    }
-    if (city) {
-      const c = city.toLowerCase().trim();
-      courts = courts.filter((court) => court.city.toLowerCase().includes(c));
-    }
-    if (category) {
-      courts = courts.filter((court) => court.category.toLowerCase().includes(category.toLowerCase()));
-    }
-    if (minPrice) courts = courts.filter((court) => court.pricePerHour >= parseInt(minPrice, 10));
-    if (maxPrice) courts = courts.filter((court) => court.pricePerHour <= parseInt(maxPrice, 10));
-
-    res.json({ success: true, source: 'JSON Fallback', total: courts.length, data: courts });
+    return res.json({
+      success: true,
+      source: 'PostgreSQL Database',
+      total: courts.length,
+      data: courts
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Lỗi tải dữ liệu sân', error: err.message });
+    console.error('❌ Lỗi truy vấn PostgreSQL courts:', err.message);
+    return res.status(500).json({ success: false, message: 'Lỗi tải danh sách sân thể thao.' });
   }
 });
 
@@ -516,7 +489,7 @@ router.get('/:id/availability', async (req, res) => {
     if (courtRes.rowCount === 0 || !courtRes.rows[0].is_visible || courtRes.rows[0].operational_status !== 'ACTIVE') {
       return res.status(404).json({ success: false, message: 'Cụm sân hiện không khả dụng.' });
     }
-    const basePrice = Number(courtRes.rows[0].price_per_slot || 200000);
+    const basePrice = Number(courtRes.rows[0].price_per_slot || 0);
 
     let normalPrice = basePrice;
     let peakPrice = basePrice;
@@ -967,171 +940,166 @@ router.get('/:id', async (req, res) => {
   if (!Number.isSafeInteger(courtId) || courtId <= 0) {
     return res.status(400).json({ success: false, message: 'Mã sân không hợp lệ.' });
   }
+  if (!isDbConnected()) {
+    return res.status(503).json({ success: false, message: 'Không thể kết nối cơ sở dữ liệu.' });
+  }
 
   const authUser = extractOptionalUser(req);
   const userId = authUser ? authUser.userId : null;
 
-  if (isDbConnected()) {
-    try {
-      const result = await pool.query(`
-        SELECT
-          c.court_id AS id,
-          c.name,
-          st.name AS category,
-          c.address,
-          c.area AS city,
-          c.description,
-          c.price_per_slot AS price_per_hour,
-          c.operational_status,
-          c.is_visible,
-          u.full_name AS owner_name,
-          u.phone AS owner_phone,
-          op.bank_name,
-          op.bank_account_no,
-          op.bank_account_name,
-          COALESCE(rv_stats.avg_rating, 0) AS avg_rating,
-          COALESCE(rv_stats.review_count, 0) AS review_count,
-          COALESCE(fv_stats.favorites_count, 0) AS favorites_count,
-          CASE WHEN user_fv.favorite_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_favorite
-        FROM courts c
-        LEFT JOIN sport_types st ON c.sport_type_id = st.sport_type_id
-        LEFT JOIN users u ON c.owner_id = u.user_id
-        LEFT JOIN owner_profiles op ON c.owner_id = op.owner_id
-        LEFT JOIN (
-          SELECT court_id,
-                 ROUND(AVG(rating)::numeric, 1) AS avg_rating,
-                 COUNT(*)::int AS review_count
-          FROM court_reviews
-          GROUP BY court_id
-        ) rv_stats ON rv_stats.court_id = c.court_id
-        LEFT JOIN (
-          SELECT court_id, COUNT(*)::int AS favorites_count
-          FROM favorite_courts
-          GROUP BY court_id
-        ) fv_stats ON fv_stats.court_id = c.court_id
-        LEFT JOIN favorite_courts user_fv
-          ON user_fv.court_id = c.court_id AND user_fv.user_id = $2
-        WHERE c.court_id = $1
-      `, [courtId, userId]);
-
-      if (result.rows.length > 0) {
-        const row = result.rows[0];
-        if (!row.is_visible || row.operational_status !== 'ACTIVE') {
-          return res.status(404).json({ success: false, message: 'Cụm sân hiện không khả dụng.' });
-        }
-        const fallback = getCourtsFromFile().find((f) => f.id === courtId);
-
-        const subCourtsRes = await pool.query(
-          `SELECT
-             sc.sub_court_id,
-             sc.name,
-             sc.sport_type_id,
-             st.name AS sport_name,
-             sc.description,
-             sc.surface_type,
-             sc.amenities,
-             sc.image_url,
-             sc.normal_price,
-             sc.peak_price
-           FROM sub_courts sc
-           LEFT JOIN sport_types st ON st.sport_type_id = sc.sport_type_id
-           WHERE sc.court_id = $1 AND sc.status = 'ACTIVE' AND sc.is_visible = TRUE
-           ORDER BY sc.sub_court_id ASC`,
-          [courtId]
-        );
-
-        const timeSlotsRes = await pool.query(
-          `SELECT
-             slot_id,
-             TO_CHAR(start_time, 'HH24:MI') AS start_label,
-             TO_CHAR(end_time, 'HH24:MI') AS end_label,
-             TO_CHAR(start_time, 'HH24:MI:SS') AS start_full,
-             is_peak
-           FROM time_slots
-           WHERE court_id = $1 AND is_active = TRUE
-           ORDER BY start_time ASC`,
-          [courtId]
-        );
-
-        const subCourts = subCourtsRes.rows.map((sc) => ({
-          id: Number(sc.sub_court_id),
-          name: sc.name,
-          sportTypeId: Number(sc.sport_type_id),
-          sportType: sc.sport_name || row.category,
-          description: sc.description || '',
-          surfaceType: sc.surface_type || '',
-          amenities: sc.amenities || [],
-          imageUrl: sc.image_url || (fallback ? fallback.imageUrl : FACILITY_IMAGES[(courtId - 1) % FACILITY_IMAGES.length]),
-          normalPrice: Number(sc.normal_price),
-          peakPrice: Number(sc.peak_price),
-          priceFormatted: `${Number(sc.normal_price).toLocaleString('vi-VN')}đ`
-        }));
-
-        const timeSlots = timeSlotsRes.rows.map((ts) => ({
-          slotId: Number(ts.slot_id),
-          slot: `${ts.start_label} - ${ts.end_label}`,
-          durationMinutes: calcSlotDurationMinutes(ts.start_label, ts.end_label),
-          isPeak: resolvePeakFlag(ts.is_peak, ts.start_full)
-        }));
-
-        const computedOpenTime = timeSlotsRes.rows.length > 0
-          ? `${timeSlotsRes.rows[0].start_label} - ${timeSlotsRes.rows.reduce((maxEnd, r) => (r.end_label > maxEnd ? r.end_label : maxEnd), timeSlotsRes.rows[0].end_label)}`
-          : 'Chưa mở giờ';
-
-        const reviewCount = Number(row.review_count || 0);
-        const ratingNum = reviewCount > 0 ? parseFloat(row.avg_rating || 0) : 0;
-
-        return res.json({
-          success: true,
-          source: 'PostgreSQL Database',
-          data: {
-            id: Number(row.id),
-            name: row.name,
-            category: row.category || 'THỂ THAO',
-            rating: ratingNum,
-            ratingFormatted: reviewCount > 0 ? ratingNum.toFixed(1) : 'Mới',
-            reviewCount,
-            favoritesCount: Number(row.favorites_count || 0),
-            isFavorite: Boolean(row.is_favorite),
-            address: row.address,
-            city: row.city || 'TP. Hồ Chí Minh',
-            ownerName: row.owner_name || '',
-            ownerPhone: row.owner_phone || '',
-            ownerBank: row.bank_account_no
-              ? {
-                  bankName: row.bank_name || '',
-                  bankAccountNo: row.bank_account_no || '',
-                  bankAccountName: row.bank_account_name || ''
-                }
-              : null,
-            pricePerHour: parseFloat(row.price_per_hour),
-            priceFormatted: `${Number(row.price_per_hour).toLocaleString('vi-VN')}đ`,
-            imageUrl: fallback ? fallback.imageUrl : FACILITY_IMAGES[(courtId - 1) % FACILITY_IMAGES.length],
-            amenities: row.description
-              ? row.description.split(',').map((s) => s.trim()).filter(Boolean)
-              : (fallback ? fallback.amenities : []),
-            openTime: computedOpenTime,
-            subCourts,
-            timeSlots
-          }
-        });
-      }
-      return res.status(404).json({ success: false, message: 'Không tìm thấy sân thể thao' });
-    } catch (err) {
-      console.warn('⚠️ Lỗi truy vấn PostgreSQL court detail:', err.message);
-    }
-  }
-
-  // Fallback
   try {
-    const courts = getCourtsFromFile();
-    const court = courts.find((c) => c.id === courtId);
-    if (!court) {
+    const result = await pool.query(`
+      SELECT
+        c.court_id AS id,
+        c.name,
+        st.name AS category,
+        c.address,
+        c.area AS city,
+        c.description,
+        c.image_url,
+        c.price_per_slot AS price_per_hour,
+        c.operational_status,
+        c.is_visible,
+        u.full_name AS owner_name,
+        u.phone AS owner_phone,
+        op.bank_name,
+        op.bank_account_no,
+        op.bank_account_name,
+        COALESCE(rv_stats.avg_rating, 0) AS avg_rating,
+        COALESCE(rv_stats.review_count, 0) AS review_count,
+        COALESCE(fv_stats.favorites_count, 0) AS favorites_count,
+        CASE WHEN user_fv.favorite_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_favorite
+      FROM courts c
+      LEFT JOIN sport_types st ON c.sport_type_id = st.sport_type_id
+      LEFT JOIN users u ON c.owner_id = u.user_id
+      LEFT JOIN owner_profiles op ON c.owner_id = op.owner_id
+      LEFT JOIN (
+        SELECT court_id,
+               ROUND(AVG(rating)::numeric, 1) AS avg_rating,
+               COUNT(*)::int AS review_count
+        FROM court_reviews
+        GROUP BY court_id
+      ) rv_stats ON rv_stats.court_id = c.court_id
+      LEFT JOIN (
+        SELECT court_id, COUNT(*)::int AS favorites_count
+        FROM favorite_courts
+        GROUP BY court_id
+      ) fv_stats ON fv_stats.court_id = c.court_id
+      LEFT JOIN favorite_courts user_fv
+        ON user_fv.court_id = c.court_id AND user_fv.user_id = $2
+      WHERE c.court_id = $1
+    `, [courtId, userId]);
+
+    if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy sân thể thao' });
     }
-    res.json({ success: true, source: 'JSON Fallback', data: court });
+
+    const row = result.rows[0];
+    if (!row.is_visible || row.operational_status !== 'ACTIVE') {
+      return res.status(404).json({ success: false, message: 'Cụm sân hiện không khả dụng.' });
+    }
+
+    const subCourtsRes = await pool.query(
+      `SELECT
+         sc.sub_court_id,
+         sc.name,
+         sc.sport_type_id,
+         st.name AS sport_name,
+         sc.description,
+         sc.surface_type,
+         sc.amenities,
+         sc.image_url,
+         sc.normal_price,
+         sc.peak_price
+       FROM sub_courts sc
+       LEFT JOIN sport_types st ON st.sport_type_id = sc.sport_type_id
+       WHERE sc.court_id = $1 AND sc.status = 'ACTIVE' AND sc.is_visible = TRUE
+       ORDER BY sc.sub_court_id ASC`,
+      [courtId]
+    );
+
+    const timeSlotsRes = await pool.query(
+      `SELECT
+         slot_id,
+         TO_CHAR(start_time, 'HH24:MI') AS start_label,
+         TO_CHAR(end_time, 'HH24:MI') AS end_label,
+         TO_CHAR(start_time, 'HH24:MI:SS') AS start_full,
+         is_peak
+       FROM time_slots
+       WHERE court_id = $1 AND is_active = TRUE
+       ORDER BY start_time ASC`,
+      [courtId]
+    );
+
+    const subCourts = subCourtsRes.rows.map((sc) => ({
+      id: Number(sc.sub_court_id),
+      name: sc.name,
+      sportTypeId: Number(sc.sport_type_id),
+      sportType: sc.sport_name || row.category,
+      description: sc.description || '',
+      surfaceType: sc.surface_type || '',
+      amenities: sc.amenities || [],
+      imageUrl: sc.image_url && sc.image_url.trim() ? sc.image_url.trim() : null,
+      normalPrice: Number(sc.normal_price),
+      peakPrice: Number(sc.peak_price),
+      priceFormatted: `${Number(sc.normal_price).toLocaleString('vi-VN')}đ`
+    }));
+
+    const timeSlots = timeSlotsRes.rows.map((ts) => ({
+      slotId: Number(ts.slot_id),
+      slot: `${ts.start_label} - ${ts.end_label}`,
+      durationMinutes: calcSlotDurationMinutes(ts.start_label, ts.end_label),
+      isPeak: resolvePeakFlag(ts.is_peak, ts.start_full)
+    }));
+
+    const computedOpenTime = timeSlotsRes.rows.length > 0
+      ? `${timeSlotsRes.rows[0].start_label} - ${timeSlotsRes.rows.reduce((maxEnd, r) => (r.end_label > maxEnd ? r.end_label : maxEnd), timeSlotsRes.rows[0].end_label)}`
+      : 'Chưa mở giờ';
+
+    const reviewCount = Number(row.review_count || 0);
+    const ratingNum = reviewCount > 0 ? parseFloat(row.avg_rating || 0) : 0;
+    const clusterImageUrl =
+      (row.image_url && row.image_url.trim()) ||
+      subCourts.find((s) => s.imageUrl)?.imageUrl ||
+      null;
+
+    return res.json({
+      success: true,
+      source: 'PostgreSQL Database',
+      data: {
+        id: Number(row.id),
+        name: row.name,
+        category: row.category || 'THỂ THAO',
+        rating: ratingNum,
+        ratingFormatted: reviewCount > 0 ? ratingNum.toFixed(1) : 'Mới',
+        reviewCount,
+        favoritesCount: Number(row.favorites_count || 0),
+        isFavorite: Boolean(row.is_favorite),
+        address: row.address || '',
+        city: row.city || '',
+        ownerName: row.owner_name || '',
+        ownerPhone: row.owner_phone || '',
+        ownerBank: row.bank_account_no
+          ? {
+              bankName: row.bank_name || '',
+              bankAccountNo: row.bank_account_no || '',
+              bankAccountName: row.bank_account_name || ''
+            }
+          : null,
+        pricePerHour: parseFloat(row.price_per_hour || 0),
+        priceFormatted: `${Number(row.price_per_hour || 0).toLocaleString('vi-VN')}đ`,
+        imageUrl: clusterImageUrl,
+        amenities: row.description
+          ? row.description.split(',').map((s) => s.trim()).filter(Boolean)
+          : [],
+        openTime: computedOpenTime,
+        subCourts,
+        timeSlots
+      }
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Lỗi máy chủ', error: err.message });
+    console.error('❌ Lỗi truy vấn PostgreSQL court detail:', err.message);
+    return res.status(500).json({ success: false, message: 'Không thể tải thông tin chi tiết sân.' });
   }
 });
 

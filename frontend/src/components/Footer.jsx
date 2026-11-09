@@ -18,11 +18,11 @@ export default function Footer({ onOpenAuth, onOpenOwnerDashboard }) {
                 <span className="fw-bold fs-4 text-white">SportsBooking</span>
               </div>
               <p className="text-white-50 small mb-0">
-                Nền tảng đặt sân thể thao #1 Việt Nam - Đa cụm sân, đa bộ môn & đa chủ sân
+                Nền tảng đặt sân thể thao trực tuyến - Kết nối người chơi và chủ sân trên toàn quốc
               </p>
             </div>
 
-            {/* Links & Hotline */}
+            {/* Links */}
             <div className="col-md-7 d-flex flex-wrap align-items-center justify-content-md-end gap-3 gap-md-4">
               <a
                 href="#guide"
@@ -66,25 +66,20 @@ export default function Footer({ onOpenAuth, onOpenOwnerDashboard }) {
               >
                 Đăng ký
               </a>
-
-              <div className="d-inline-flex align-items-center gap-2 bg-white bg-opacity-10 text-white rounded-pill px-3 py-1 small fw-semibold">
-                <i className="bi bi-telephone-fill text-success"></i>
-                <span>Hotline: 1900 8888</span>
-              </div>
             </div>
           </div>
 
           {/* Bottom Footer Row */}
           <div className="d-flex flex-column flex-md-row justify-content-between align-items-center pt-4 small text-white-50 gy-2">
             <p className="mb-2 mb-md-0">
-              © 2024 SportsBooking Vietnam. Nền tảng kết nối người chơi và chủ sân thể thao toàn quốc.
+              © 2026 SportsBooking. Nền tảng kết nối người chơi và chủ sân thể thao.
             </p>
             <div className="d-flex align-items-center gap-3">
               <span className="cursor-pointer hover-white">
-                Tiếng Việt <i className="bi bi-chevron-down small"></i>
+                Tiếng Việt
               </span>
               <span>•</span>
-              <span>Hà Nội & TP.HCM & Đà Nẵng</span>
+              <span>Đa khu vực toàn quốc</span>
             </div>
           </div>
         </div>
@@ -139,7 +134,7 @@ export default function Footer({ onOpenAuth, onOpenOwnerDashboard }) {
                   </div>
                   <ul className="mb-0 ps-3 text-dark">
                     <li>Chủ động hủy lịch đặt trong mục <strong>Lịch đặt của tôi</strong> để giải phóng lại khung giờ.</li>
-                    <li>Lưu nhanh các cụm sân yêu thích và gửi đánh giá thực tế sau mỗi lượt đặt sân.</li>
+                    <li>Lưu nhanh các cụm sân yêu thích và gửi đánh giá thực tế sau khi hoàn tất Check-in tại sân.</li>
                   </ul>
                 </div>
               </div>

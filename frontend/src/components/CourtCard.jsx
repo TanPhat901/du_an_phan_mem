@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function CourtCard({
   court,
@@ -6,6 +6,12 @@ export default function CourtCard({
   isFavorite = false,
   onToggleFavorite
 }) {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [court.imageUrl]);
+
   const totalSlots = Number(court.totalSlots ?? (Array.isArray(court.availableSlots) ? court.availableSlots.length : 0));
   const availCount = Number(court.availableSlotCount ?? totalSlots);
   const reviewCount = Number(court.reviewCount || 0);
@@ -31,14 +37,28 @@ export default function CourtCard({
       <div className="card h-100 court-card">
         {/* Card Image / Preview with Badges */}
         <div className="court-card-img-wrapper position-relative">
-          <img
-            src={court.imageUrl}
-            alt={court.name}
-            className="court-card-img"
-            loading="lazy"
-            style={{ cursor: 'pointer' }}
-            onClick={() => onBookNow(court)}
-          />
+          {court.imageUrl && !imgError ? (
+            <img
+              src={court.imageUrl}
+              alt={court.name}
+              className="court-card-img"
+              loading="lazy"
+              style={{ cursor: 'pointer' }}
+              onClick={() => onBookNow(court)}
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <div
+              className="court-placeholder-box"
+              style={{ cursor: 'pointer' }}
+              onClick={() => onBookNow(court)}
+            >
+              <i className="bi bi-building fs-1 opacity-75 mb-1"></i>
+              <span className="small fw-semibold opacity-90 text-truncate px-3" style={{ maxWidth: '100%' }}>
+                {court.category || 'Sân thể thao'}
+              </span>
+            </div>
+          )}
 
           {/* Bottom overlay frame with real slot availability for chosen date */}
           <div
@@ -104,7 +124,7 @@ export default function CourtCard({
 
           <p className="card-text text-muted small mb-3 d-flex align-items-start gap-1">
             <i className="bi bi-geo-alt text-brand flex-shrink-0 mt-1"></i>
-            <span className="text-truncate">{court.address}</span>
+            <span className="text-truncate">{court.address || 'Chưa cập nhật địa chỉ'}</span>
           </p>
 
           <div className="d-flex flex-wrap gap-2 mb-4">
@@ -120,7 +140,7 @@ export default function CourtCard({
               <span className="d-block text-muted" style={{ fontSize: '0.75rem' }}>Giá thuê chỉ từ</span>
               <div className="d-flex align-items-baseline gap-1">
                 <span className="fw-bold fs-5 text-brand-dark">
-                  {court.priceFormatted || `${court.pricePerHour.toLocaleString('vi-VN')}đ`}
+                  {court.priceFormatted || `${Number(court.pricePerHour || 0).toLocaleString('vi-VN')}đ`}
                 </span>
                 <span className="text-muted small">/giờ</span>
               </div>

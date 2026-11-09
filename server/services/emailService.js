@@ -165,7 +165,7 @@ async function sendOtpEmail(toEmail, otpCode) {
           </div>
         </div>
         <div class="footer">
-          © 2025 SportsBooking Vietnam. Hotline hỗ trợ: 1900 8899 (8h00 - 22h00)
+          © 2025 SportsBooking Vietnam.
         </div>
       </div>
     </body>

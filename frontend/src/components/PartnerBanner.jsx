@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function PartnerBanner({ onOpenPartnerModal, onOpenAuth, onOpenOwnerDashboard }) {
+export default function PartnerBanner({ onOpenAuth, onOpenOwnerDashboard }) {
   return (
     <section className="container py-4 mb-5">
       <div className="partner-cta-box p-4 p-md-5">
@@ -13,12 +13,12 @@ export default function PartnerBanner({ onOpenPartnerModal, onOpenAuth, onOpenOw
 
             {/* Title */}
             <h2 className="display-6 fw-bold mb-3 lh-sm">
-              Tối ưu công suất & Tăng 40% doanh thu mỗi tháng
+              Quản lý cụm sân & lịch đặt chuyên nghiệp
             </h2>
 
             {/* Description */}
             <p className="text-white-50 mb-4" style={{ maxWidth: '640px', fontSize: '1.05rem', lineHeight: 1.6 }}>
-              Quản lý lịch sân tự động, loại bỏ tình trạng hủy giờ đột ngột và tiếp cận hơn 500.000 người chơi thể thao thường xuyên tại khu vực lân cận của bạn.
+              Thiết lập khung giờ hoạt động linh hoạt, duyệt đơn đặt sân theo thời gian thực, check-in vé QR tại quầy và theo dõi doanh thu tập trung trên một nền tảng.
             </p>
 
             {/* CTA Buttons */}
@@ -26,7 +26,7 @@ export default function PartnerBanner({ onOpenPartnerModal, onOpenAuth, onOpenOw
               <button 
                 type="button" 
                 className="btn btn-light text-brand-dark fw-bold px-4 py-2 rounded-3 shadow-sm"
-                onClick={() => onOpenAuth ? onOpenAuth('register-owner') : onOpenPartnerModal()}
+                onClick={() => onOpenAuth?.('register-owner')}
               >
                 Đăng ký chủ sân ngay
               </button>

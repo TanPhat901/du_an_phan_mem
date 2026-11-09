@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS courts (
     address VARCHAR(255) NOT NULL,
     area VARCHAR(100) DEFAULT NULL,
     description TEXT DEFAULT NULL,
+    image_url TEXT DEFAULT NULL,
     price_per_slot DECIMAL(12,2) NOT NULL DEFAULT 0,
     operational_status operational_status_enum NOT NULL DEFAULT 'ACTIVE',
     is_visible BOOLEAN NOT NULL DEFAULT TRUE,

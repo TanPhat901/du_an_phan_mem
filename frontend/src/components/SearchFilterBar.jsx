@@ -1,14 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { formatLocalYMD } from '../utils/vietqr';
 
-const DEFAULT_CATEGORIES = [
-  { sport_type_id: 1, name: 'PADEL & PICKLEBALL' },
-  { sport_type_id: 2, name: 'BÓNG ĐÁ & TENNIS' },
-  { sport_type_id: 3, name: 'CẦU LÔNG TRONG NHÀ' }
-];
-
-const DEFAULT_AREAS = ['TP. Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Bình Dương'];
-
 const formatCategoryLabel = (name) => {
   if (!name) return '';
   if (name === 'CẦU LÔNG TRONG NHÀ') return 'Cầu lông';
@@ -44,15 +36,15 @@ export default function SearchFilterBar({
   onResetFilters
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
-  const [areas, setAreas] = useState(DEFAULT_AREAS);
+  const [categories, setCategories] = useState([]);
+  const [areas, setAreas] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
     fetch('http://localhost:5000/api/courts/sport-types')
       .then((res) => res.json())
       .then((json) => {
-        if (!cancelled && json?.success && Array.isArray(json.data) && json.data.length > 0) {
+        if (!cancelled && json?.success && Array.isArray(json.data)) {
           setCategories(json.data);
         }
       })
@@ -61,7 +53,7 @@ export default function SearchFilterBar({
     fetch('http://localhost:5000/api/courts/areas')
       .then((res) => res.json())
       .then((json) => {
-        if (!cancelled && json?.success && Array.isArray(json.data) && json.data.length > 0) {
+        if (!cancelled && json?.success && Array.isArray(json.data)) {
           setAreas(json.data);
         }
       })

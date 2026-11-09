@@ -13,12 +13,14 @@ export default function BookingModal({
 }) {
   const todayYmd = formatLocalYMD();
   const isLoggedIn = Boolean(currentUser && getStoredToken());
+  const slotOptions = Array.isArray(court?.availableSlots) ? court.availableSlots : [];
   const [customerName, setCustomerName] = useState(currentUser?.fullName || '');
   const [phone, setPhone] = useState(currentUser?.phone || '');
   const [date, setDate] = useState(court?.date || todayYmd);
   const [selectedSlot, setSelectedSlot] = useState(
-    court?.timeSlot || (court?.availableSlots ? court.availableSlots[0] : '18:00 - 19:00')
+    court?.timeSlot || slotOptions[0] || ''
   );
+  const [imgError, setImgError] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('Tại quầy');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -100,14 +102,17 @@ export default function BookingModal({
     <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1055 }}>
       <div className={`modal-dialog modal-dialog-centered ${confirmedBooking ? 'modal-lg' : ''}`}>
         <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
-          {/* Header with image */}
+          {/* Header with image or brand banner */}
           <div className="position-relative" style={{ height: '130px', backgroundColor: '#0b4d3c' }}>
-            <img
-              src={court.imageUrl}
-              alt={court.name}
-              className="w-100 h-100"
-              style={{ objectFit: 'cover', opacity: 0.35 }}
-            />
+            {court?.imageUrl && !imgError && (
+              <img
+                src={court.imageUrl}
+                alt={court.name}
+                className="w-100 h-100"
+                style={{ objectFit: 'cover', opacity: 0.35 }}
+                onError={() => setImgError(true)}
+              />
+            )}
             <div className="position-absolute bottom-0 start-0 p-3 text-white">
               <span className={`badge ${confirmedBooking ? (confirmedBooking.status === 'PENDING' ? 'bg-warning text-dark' : 'bg-success') : 'bg-success'} mb-1`}>
                 {confirmedBooking
@@ -252,10 +257,15 @@ export default function BookingModal({
                       className="form-select"
                       value={selectedSlot}
                       onChange={(e) => setSelectedSlot(e.target.value)}
+                      required
                     >
-                      {(court.availableSlots || ['17:00 - 18:00', '18:00 - 19:00', '19:00 - 20:00']).map((slot, index) => (
-                        <option key={index} value={slot}>{slot}</option>
-                      ))}
+                      {slotOptions.length === 0 ? (
+                        <option value="">Chưa có khung giờ trống</option>
+                      ) : (
+                        slotOptions.map((slot, index) => (
+                          <option key={index} value={slot}>{slot}</option>
+                        ))
+                      )}
                     </select>
                   )}
                 </div>
@@ -314,7 +324,7 @@ export default function BookingModal({
                 <button type="button" className="btn btn-outline-secondary w-50" onClick={onClose}>
                   Hủy bỏ
                 </button>
-                <button type="submit" className="btn btn-brand w-50" disabled={submitting}>
+                <button type="submit" className="btn btn-brand w-50" disabled={submitting || !selectedSlot}>
                   {submitting ? 'Đang gửi...' : 'Gửi yêu cầu đặt sân'}
                 </button>
               </div>

@@ -64,10 +64,14 @@ export default function CourtDetailPage({
   onBackToHome,
   onProceedBooking
 }) {
-  const courtId = court?.id || 1;
+  const courtId = Number(court?.id);
+  const hasValidCourtId = Number.isSafeInteger(courtId) && courtId > 0;
   const reviewsSectionRef = useRef(null);
   const [detail, setDetail] = useState(court || null);
   const [detailLoading, setDetailLoading] = useState(true);
+  const [detailError, setDetailError] = useState('');
+  const [detailReloadKey, setDetailReloadKey] = useState(0);
+  const [failedImageUrls, setFailedImageUrls] = useState({});
 
   const [subCourts, setSubCourts] = useState([]);
   const [selectedSubCourt, setSelectedSubCourt] = useState(null);
@@ -101,14 +105,25 @@ export default function CourtDetailPage({
 
   // Load facility detail
   useEffect(() => {
+    if (!hasValidCourtId) {
+      setDetail(null);
+      setSubCourts([]);
+      setSelectedSubCourt(null);
+      setDetailError('Mã cụm sân không hợp lệ.');
+      setDetailLoading(false);
+      return;
+    }
+
     let cancelled = false;
     setDetailLoading(true);
+    setDetailError('');
+    setFailedImageUrls({});
     const token = getStoredToken();
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
     fetch(`http://localhost:5000/api/courts/${courtId}`, { headers })
       .then(async (res) => {
-        const json = await res.json();
+        const json = await res.json().catch(() => ({}));
         if (!res.ok || !json.success || !json.data) {
           throw new Error(json.message || 'Không thể tải chi tiết sân.');
         }
@@ -118,39 +133,14 @@ export default function CourtDetailPage({
         if (cancelled) return;
         setDetail(data);
         const realSubCourts = Array.isArray(data.subCourts) ? data.subCourts : [];
-        if (realSubCourts.length > 0) {
-          setSubCourts(realSubCourts);
-          setSelectedSubCourt(realSubCourts[0]);
-        } else {
-          const fallbackSub = {
-            id: null,
-            name: `${data.name} (Sân tiêu chuẩn)`,
-            normalPrice: Number(data.pricePerHour || 200000),
-            peakPrice: Number(data.pricePerHour || 200000),
-            priceFormatted: `${Number(data.pricePerHour || 200000).toLocaleString('vi-VN')}đ`,
-            amenities: data.amenities || [],
-            imageUrl: data.imageUrl
-          };
-          setSubCourts([fallbackSub]);
-          setSelectedSubCourt(fallbackSub);
-        }
+        setSubCourts(realSubCourts);
+        setSelectedSubCourt(realSubCourts[0] || null);
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
-        if (court) {
-          setDetail(court);
-          const fallbackSub = {
-            id: null,
-            name: `${court.name} (Sân tiêu chuẩn)`,
-            normalPrice: Number(court.pricePerHour || 200000),
-            peakPrice: Number(court.pricePerHour || 200000),
-            priceFormatted: `${Number(court.pricePerHour || 200000).toLocaleString('vi-VN')}đ`,
-            amenities: court.amenities || [],
-            imageUrl: court.imageUrl
-          };
-          setSubCourts([fallbackSub]);
-          setSelectedSubCourt(fallbackSub);
-        }
+        setDetailError(err.message || 'Không thể tải thông tin chi tiết cụm sân từ máy chủ.');
+        setSubCourts([]);
+        setSelectedSubCourt(null);
       })
       .finally(() => {
         if (!cancelled) setDetailLoading(false);
@@ -158,10 +148,11 @@ export default function CourtDetailPage({
     return () => {
       cancelled = true;
     };
-  }, [courtId, currentUser]);
+  }, [courtId, hasValidCourtId, currentUser, detailReloadKey]);
 
   // Load real reviews from PostgreSQL
   const loadReviews = useCallback(async () => {
+    if (!hasValidCourtId) return;
     setReviewsState((prev) => ({ ...prev, loading: true }));
     const token = getStoredToken();
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
@@ -190,7 +181,7 @@ export default function CourtDetailPage({
     } catch {
       setReviewsState((prev) => ({ ...prev, loading: false }));
     }
-  }, [courtId]);
+  }, [courtId, hasValidCourtId]);
 
   useEffect(() => {
     loadReviews();
@@ -206,7 +197,10 @@ export default function CourtDetailPage({
 
   // Kiểm tra lịch trống thực tế theo ngày & sân con
   const loadAvailability = useCallback(async () => {
-    if (!selectedDate?.fullDate) return;
+    if (!hasValidCourtId || !selectedDate?.fullDate) {
+      setSlotsLoading(false);
+      return;
+    }
     setSlotsLoading(true);
     setSlotsError('');
     try {
@@ -235,7 +229,7 @@ export default function CourtDetailPage({
     } finally {
       setSlotsLoading(false);
     }
-  }, [courtId, selectedDate?.fullDate, selectedSubCourt?.id]);
+  }, [courtId, hasValidCourtId, selectedDate?.fullDate, selectedSubCourt?.id]);
 
   useEffect(() => {
     loadAvailability();
@@ -260,7 +254,7 @@ export default function CourtDetailPage({
       timeSlot: selectedSlot.slot,
       address: detail?.address || court?.address || '',
       ownerBank: detail?.ownerBank || null,
-      imageUrl: selectedSubCourt?.imageUrl || detail?.imageUrl || court?.imageUrl
+      imageUrl: selectedSubCourt?.imageUrl || detail?.imageUrl || court?.imageUrl || null
     });
   };
 
@@ -367,11 +361,26 @@ export default function CourtDetailPage({
   const displayAmenities =
     selectedSubCourt?.amenities?.length > 0
       ? selectedSubCourt.amenities
-      : detail?.amenities || ['Bãi đỗ xe', 'Đèn LED ban đêm', 'Phòng thay đồ'];
+      : Array.isArray(detail?.amenities)
+        ? detail.amenities
+        : [];
 
   const activePrice = selectedSlot
-    ? selectedSlot.price
-    : selectedSubCourt?.normalPrice || detail?.pricePerHour || 200000;
+    ? Number(selectedSlot.price || 0)
+    : Number(selectedSubCourt?.normalPrice ?? detail?.pricePerHour ?? 0);
+
+  const rawGalleryCandidates = [
+    selectedSubCourt?.imageUrl,
+    detail?.imageUrl,
+    ...subCourts.map((s) => s.imageUrl)
+  ].filter((u) => typeof u === 'string' && u.trim() !== '');
+  const galleryImages = Array.from(new Set(rawGalleryCandidates))
+    .filter((url) => !failedImageUrls[url])
+    .slice(0, 5);
+
+  const handleImageError = (url) => {
+    setFailedImageUrls((prev) => ({ ...prev, [url]: true }));
+  };
 
   const formatDurationLabel = (mins) => {
     const val = Number(mins || 60);
@@ -398,7 +407,9 @@ export default function CourtDetailPage({
                   <i className="bi bi-house-door me-1"></i>Trang chủ
                 </a>
               </li>
-              <li className="breadcrumb-item text-muted">{detail?.city || 'TP. Hồ Chí Minh'}</li>
+              {detail?.city && (
+                <li className="breadcrumb-item text-muted">{detail.city}</li>
+              )}
               <li className="breadcrumb-item active fw-semibold text-dark" aria-current="page">
                 {detail?.name || 'Chi tiết cụm sân'}
               </li>
@@ -418,6 +429,7 @@ export default function CourtDetailPage({
               type="button"
               className={`btn btn-sm ${isSaved ? 'btn-danger' : 'btn-outline-secondary bg-white'} d-flex align-items-center gap-1`}
               onClick={() => onToggleFavorite?.(detail || court)}
+              disabled={!detail}
             >
               <i className={`bi ${isSaved ? 'bi-heart-fill' : 'bi-heart'}`}></i>
               <span>{isSaved ? 'Đã lưu' : 'Lưu sân'}</span>
@@ -430,6 +442,31 @@ export default function CourtDetailPage({
           </div>
         </div>
 
+        {!detailLoading && detailError && (
+          <div className="alert alert-danger d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4">
+            <div>
+              <i className="bi bi-exclamation-triangle-fill me-2"></i>
+              <strong>Không thể tải thông tin cụm sân:</strong> {detailError}
+            </div>
+            <div className="d-flex gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-danger"
+                onClick={() => setDetailReloadKey((k) => k + 1)}
+              >
+                <i className="bi bi-arrow-clockwise me-1"></i>Thử lại
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                onClick={onBackToHome}
+              >
+                Về trang chủ
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Court Header Info */}
         <div className="mb-4">
           <div className="d-flex flex-wrap gap-2 mb-2">
@@ -437,7 +474,7 @@ export default function CourtDetailPage({
               {detail?.category || 'THỂ THAO'}
             </span>
             <span className="badge bg-secondary-subtle text-secondary py-1 px-2 fw-semibold" style={{ fontSize: '0.72rem' }}>
-              {subCourts.length} sân thi đấu
+              {subCourts.length > 0 ? `${subCourts.length} sân thi đấu` : 'Đặt theo cụm sân'}
             </span>
             {detail?.openTime && (
               <span className="badge bg-secondary-subtle text-secondary py-1 px-2 fw-semibold" style={{ fontSize: '0.72rem' }}>
@@ -468,11 +505,15 @@ export default function CourtDetailPage({
               <span>{displayAvgRating}</span>
               <span className="text-muted fw-normal">({displayReviewCount} đánh giá)</span>
             </a>
-            <span>•</span>
-            <div className="d-flex align-items-center gap-1">
-              <i className="bi bi-geo-alt text-brand"></i>
-              <span>{detail?.address}</span>
-            </div>
+            {detail?.address && (
+              <>
+                <span>•</span>
+                <div className="d-flex align-items-center gap-1">
+                  <i className="bi bi-geo-alt text-brand"></i>
+                  <span>{detail.address}</span>
+                </div>
+              </>
+            )}
             {detail?.ownerPhone && (
               <>
                 <span>•</span>
@@ -485,12 +526,29 @@ export default function CourtDetailPage({
           </div>
         </div>
 
-        {/* Photo Mosaic Gallery */}
-        <div className="court-gallery-grid mb-5 shadow-sm">
-          <div className="gallery-main-img">
+        {/* Dynamic Real-Image Gallery */}
+        {galleryImages.length === 0 ? (
+          <div className="position-relative mb-5 shadow-sm rounded-4 overflow-hidden" style={{ height: '300px' }}>
+            <div className="court-placeholder-box">
+              <i className="bi bi-image fs-1 opacity-75 mb-2"></i>
+              <h5 className="fw-bold mb-1">{detail?.name || 'Cụm sân thể thao'}</h5>
+              <div className="small opacity-75">Chủ sân chưa tải lên hình ảnh cơ sở</div>
+            </div>
+            {(selectedSubCourt?.name || detail?.name) && (
+              <div className="position-absolute bottom-0 start-0 m-3">
+                <span className="badge bg-dark bg-opacity-75 text-white py-2 px-3 fw-semibold">
+                  ● {selectedSubCourt?.name || detail?.name}
+                </span>
+              </div>
+            )}
+          </div>
+        ) : galleryImages.length === 1 ? (
+          <div className="position-relative mb-5 shadow-sm rounded-4 overflow-hidden" style={{ height: '380px' }}>
             <img
-              src={detail?.imageUrl || 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=1200&q=80'}
-              alt={detail?.name || 'Mặt sân chính'}
+              src={galleryImages[0]}
+              alt={detail?.name || 'Hình ảnh cụm sân'}
+              className="w-100 h-100 object-fit-cover"
+              onError={() => handleImageError(galleryImages[0])}
             />
             <div className="position-absolute bottom-0 start-0 m-3">
               <span className="badge bg-dark bg-opacity-75 text-white py-2 px-3 fw-semibold">
@@ -498,32 +556,44 @@ export default function CourtDetailPage({
               </span>
             </div>
           </div>
-
-          <div className="gallery-sub-img">
-            <img
-              src={selectedSubCourt?.imageUrl || 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=600&q=80'}
-              alt="Sân thi đấu"
-            />
+        ) : (
+          <div
+            className="court-gallery-grid mb-5 shadow-sm"
+            style={
+              galleryImages.length <= 3
+                ? { gridTemplateColumns: galleryImages.length === 2 ? '1.5fr 1fr' : '2fr 1fr', gridTemplateRows: galleryImages.length === 2 ? '360px' : '210px 210px' }
+                : undefined
+            }
+          >
+            {galleryImages.map((imgUrl, idx) => {
+              const isMain = idx === 0;
+              const isWideLastOnFour = galleryImages.length === 4 && idx === 3;
+              return (
+                <div
+                  key={imgUrl}
+                  className={isMain ? 'gallery-main-img' : 'gallery-sub-img'}
+                  style={{
+                    ...(isMain && galleryImages.length === 2 ? { gridRow: 'auto', borderRadius: '14px 0 0 14px' } : {}),
+                    ...(isWideLastOnFour ? { gridColumn: 'span 2' } : {})
+                  }}
+                >
+                  <img
+                    src={imgUrl}
+                    alt={idx === 0 ? (detail?.name || 'Mặt sân chính') : `${detail?.name || 'Sân'} - Ảnh ${idx + 1}`}
+                    onError={() => handleImageError(imgUrl)}
+                  />
+                  {isMain && (
+                    <div className="position-absolute bottom-0 start-0 m-3">
+                      <span className="badge bg-dark bg-opacity-75 text-white py-2 px-3 fw-semibold">
+                        ● {selectedSubCourt?.name || detail?.name}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          <div className="gallery-sub-img" style={{ borderRadius: '0 14px 0 0' }}>
-            <img
-              src="https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=600&q=80"
-              alt="Phòng thay đồ"
-            />
-          </div>
-          <div className="gallery-sub-img">
-            <img
-              src="https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80"
-              alt="Quầy dịch vụ"
-            />
-          </div>
-          <div className="gallery-sub-img position-relative" style={{ borderRadius: '0 0 14px 0' }}>
-            <img
-              src="https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=600&q=80"
-              alt="Góc sân thi đấu"
-            />
-          </div>
-        </div>
+        )}
 
         {/* Two-Column Details & Sticky Booking Sidebar */}
         <div className="row g-4">
@@ -533,10 +603,17 @@ export default function CourtDetailPage({
             <div className="bg-white rounded-4 p-4 border shadow-sm mb-4">
               <div className="d-flex justify-content-between align-items-center mb-3">
                 <h5 className="fw-bold text-brand-dark mb-0">SÂN CON TẠI CƠ SỞ</h5>
-                <span className="text-muted small">{subCourts.length} lựa chọn khả dụng</span>
+                <span className="text-muted small">
+                  {subCourts.length > 0 ? `${subCourts.length} lựa chọn khả dụng` : 'Theo cơ sở'}
+                </span>
               </div>
               {detailLoading ? (
                 <div className="small text-muted">Đang tải danh sách sân con...</div>
+              ) : subCourts.length === 0 ? (
+                <div className="p-3 bg-light rounded-3 border text-muted small">
+                  <i className="bi bi-info-circle text-brand me-2"></i>
+                  Cụm sân áp dụng đặt theo khung giờ chung toàn cơ sở (chưa phân chia sân con riêng lẻ).
+                </div>
               ) : (
                 <div className="row g-3">
                   {subCourts.map((sc, idx) => {
@@ -576,14 +653,18 @@ export default function CourtDetailPage({
                 <span className="text-muted small">{displayAmenities.length} tiện ích</span>
               </div>
 
-              <div className="d-flex flex-wrap gap-2">
-                {displayAmenities.map((item, idx) => (
-                  <span key={idx} className="badge bg-light text-dark border px-3 py-2 fw-semibold">
-                    <i className="bi bi-check-circle-fill text-success me-1"></i>
-                    {item}
-                  </span>
-                ))}
-              </div>
+              {displayAmenities.length === 0 ? (
+                <div className="small text-muted">Chủ sân chưa cập nhật danh sách tiện ích.</div>
+              ) : (
+                <div className="d-flex flex-wrap gap-2">
+                  {displayAmenities.map((item, idx) => (
+                    <span key={idx} className="badge bg-light text-dark border px-3 py-2 fw-semibold">
+                      <i className="bi bi-check-circle-fill text-success me-1"></i>
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* ĐÁNH GIÁ TỪ NGƯỜI CHƠI (REAL POSTGRESQL) */}
@@ -783,21 +864,27 @@ export default function CourtDetailPage({
                 <label className="form-label small fw-bold text-muted text-uppercase mb-1">
                   1. CHỌN SÂN THI ĐẤU
                 </label>
-                <select
-                  className="form-select fw-semibold text-brand-dark py-2 border-1 shadow-none"
-                  value={selectedSubCourt?.id ?? ''}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    const match = subCourts.find((c) => String(c.id ?? '') === val);
-                    if (match) setSelectedSubCourt(match);
-                  }}
-                >
-                  {subCourts.map((c, idx) => (
-                    <option key={c.id || idx} value={c.id ?? ''}>
-                      {c.name} • {Number(c.normalPrice).toLocaleString('vi-VN')}đ - {Number(c.peakPrice).toLocaleString('vi-VN')}đ/h
-                    </option>
-                  ))}
-                </select>
+                {subCourts.length > 0 ? (
+                  <select
+                    className="form-select fw-semibold text-brand-dark py-2 border-1 shadow-none"
+                    value={selectedSubCourt?.id ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const match = subCourts.find((c) => String(c.id ?? '') === val);
+                      if (match) setSelectedSubCourt(match);
+                    }}
+                  >
+                    {subCourts.map((c, idx) => (
+                      <option key={c.id || idx} value={c.id ?? ''}>
+                        {c.name} • {Number(c.normalPrice).toLocaleString('vi-VN')}đ - {Number(c.peakPrice).toLocaleString('vi-VN')}đ/h
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="form-control bg-light fw-semibold text-brand-dark py-2">
+                    Cụm sân tiêu chuẩn • {Number(detail?.pricePerHour || 0).toLocaleString('vi-VN')}đ/slot
+                  </div>
+                )}
               </div>
 
               {/* Step 2: Chọn Ngày Thi Đấu */}

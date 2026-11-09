@@ -1,12 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import AccountMenu from './AccountMenu';
 
-const FACILITY_FALLBACK_IMAGES = [
-  "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&q=80",
-  "https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80",
-  "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=800&q=80"
-];
-
 const formatLocalYMD = (dateObj = new Date()) => {
   const yyyy = dateObj.getFullYear();
   const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -50,7 +44,14 @@ const estimateGeneratedSlotsCount = (openTime, closeTime, durationMinutes) => {
   return Math.min(48, Math.floor((end - start) / step));
 };
 
-export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, onOpenAuth, onOpenProfile }) {
+export default function OwnerDashboard({
+  currentUser,
+  onBackToHome,
+  onLogout,
+  onOpenAuth,
+  onOpenProfile,
+  onOpenMyBookings
+}) {
   // Navigation active tab
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'courts' | 'schedule' | 'finance' | 'settings'
 
@@ -106,6 +107,8 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
 
   // Filter & Modals
   const [courtSportFilter, setCourtSportFilter] = useState('ALL');
+  const [headerImgError, setHeaderImgError] = useState(false);
+  const [failedCourtImages, setFailedCourtImages] = useState({});
   const [showFacilityModal, setShowFacilityModal] = useState(false);
   const [facilitySaving, setFacilitySaving] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -120,7 +123,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     date: formatLocalYMD(),
     customerName: '',
     customerPhone: '',
-    price: 200000,
+    price: 0,
     paymentMethod: 'Tiền mặt tại quầy',
     status: 'CONFIRMED',
     note: ''
@@ -152,6 +155,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     area: '',
     price_per_slot: 0,
     description: '',
+    image_url: '',
     operational_status: 'ACTIVE',
     business_name: '',
     tax_code: '',
@@ -188,6 +192,8 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
 
   const mapFacility = useCallback((f) => {
     const idNum = Number(f.court_id);
+    const rawImage = f.image_url ? String(f.image_url).trim() : '';
+    const subCover = f.sub_cover_image ? String(f.sub_cover_image).trim() : '';
     return {
       id: idNum,
       name: f.name,
@@ -197,8 +203,10 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
       ownerPhone: f.owner_phone || '',
       ownerEmail: f.owner_email || currentUser?.email || '',
       address: f.address || '',
-      city: f.area || 'TP. Hồ Chí Minh',
+      city: f.area || '',
       description: f.description || '',
+      imageUrl: rawImage,
+      coverImageUrl: rawImage || subCover || null,
       pricePerSlot: Number(f.price_per_slot || 0),
       operationalStatus: f.operational_status || 'ACTIVE',
       isVisible: Boolean(f.is_visible),
@@ -208,8 +216,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
       bankAccountNo: f.bank_account_no || '',
       bankAccountName: f.bank_account_name || '',
       openTime: f.open_time_range || 'Chưa thiết lập giờ',
-      activeSlotCount: Number(f.active_slot_count || 0),
-      imageUrl: FACILITY_FALLBACK_IMAGES[(idNum - 1) % FACILITY_FALLBACK_IMAGES.length]
+      activeSlotCount: Number(f.active_slot_count || 0)
     };
   }, [currentUser?.email, currentUser?.fullName]);
 
@@ -218,14 +225,14 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     facilityId: Number(item.court_id),
     name: item.name,
     sportTypeId: Number(item.sport_type_id),
-    sportType: item.sport_name || 'Khác',
+    sportType: item.sport_name || '',
     courtType: item.description || '',
     surfaceType: item.surface_type || '',
     priceNormal: Number(item.normal_price),
     pricePeak: Number(item.peak_price),
     status: item.status,
     amenities: item.amenities || [],
-    imageUrl: item.image_url || 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=600&q=80',
+    imageUrl: item.image_url ? String(item.image_url).trim() : '',
     isVisible: Boolean(item.is_visible)
   });
 
@@ -361,6 +368,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
 
   // Đồng bộ form cài đặt khi đổi cụm sân hoặc tải lại dữ liệu từ PostgreSQL
   useEffect(() => {
+    setHeaderImgError(false);
     if (!currentFacility) return;
     setSettingsForm({
       name: currentFacility.name || '',
@@ -372,6 +380,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
       area: currentFacility.city || '',
       price_per_slot: currentFacility.pricePerSlot || 0,
       description: currentFacility.description || '',
+      image_url: currentFacility.imageUrl || '',
       operational_status: currentFacility.operationalStatus || 'ACTIVE',
       business_name: currentFacility.businessName || '',
       tax_code: currentFacility.taxCode || '',
@@ -390,6 +399,8 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     currentFacility?.city,
     currentFacility?.pricePerSlot,
     currentFacility?.description,
+    currentFacility?.imageUrl,
+    currentFacility?.coverImageUrl,
     currentFacility?.operationalStatus,
     currentFacility?.businessName,
     currentFacility?.taxCode,
@@ -444,8 +455,9 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
       name: String(form.get('facilityName') || '').trim(),
       sport_type_id: Number(form.get('sportTypeId')),
       address: String(form.get('address') || '').trim(),
-      area: String(form.get('area') || '').trim() || 'TP. Hồ Chí Minh',
-      description: String(form.get('description') || '').trim(),
+      area: String(form.get('area') || '').trim() || null,
+      description: String(form.get('description') || '').trim() || null,
+      image_url: String(form.get('imageUrl') || '').trim() || null,
       price_per_slot: Number(form.get('pricePerSlot') || 0),
       open_time: String(form.get('openTime') || '06:00').trim(),
       close_time: String(form.get('closeTime') || '22:00').trim(),
@@ -570,6 +582,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
           address: settingsForm.address.trim(),
           area: settingsForm.area.trim(),
           description: settingsForm.description.trim(),
+          image_url: settingsForm.image_url.trim(),
           price_per_slot: Number(settingsForm.price_per_slot || 0),
           operational_status: settingsForm.operational_status,
           owner_name: settingsForm.owner_name.trim(),
@@ -604,7 +617,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
 
     const computedPrice = chosenSub
       ? (chosenSlot?.isPeak ? chosenSub.peakPrice : chosenSub.normalPrice)
-      : (currentFacility?.pricePerSlot || 200000);
+      : (currentFacility?.pricePerSlot || 0);
 
     setWalkInForm({
       subCourtId: chosenSub ? String(chosenSub.id) : '',
@@ -1096,6 +1109,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                 onGoHome={() => onBackToHome?.()}
                 onOpenOwnerDashboard={() => setActiveTab('overview')}
                 onOpenProfile={onOpenProfile}
+                onOpenMyBookings={onOpenMyBookings}
                 onLogout={onLogout}
               />
             </div>
@@ -1133,12 +1147,22 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                 <div className="row align-items-center mb-3 g-3">
                   <div className="col-lg-8">
                     <div className="d-flex align-items-start gap-3">
-                      <img
-                        src={currentFacility.imageUrl}
-                        alt={currentFacility.name}
-                        className="rounded-3 object-fit-cover shadow-sm d-none d-sm-block"
-                        style={{ width: '80px', height: '80px' }}
-                      />
+                      {currentFacility.coverImageUrl && !headerImgError ? (
+                        <img
+                          src={currentFacility.coverImageUrl}
+                          alt={currentFacility.name}
+                          className="rounded-3 object-fit-cover shadow-sm d-none d-sm-block flex-shrink-0"
+                          style={{ width: '80px', height: '80px' }}
+                          onError={() => setHeaderImgError(true)}
+                        />
+                      ) : (
+                        <div
+                          className="court-placeholder-box rounded-3 shadow-sm d-none d-sm-flex flex-shrink-0 p-1"
+                          style={{ width: '80px', height: '80px' }}
+                        >
+                          <i className="bi bi-building fs-4"></i>
+                        </div>
+                      )}
                       <div>
                         <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
                           <h4 className="fw-bold text-brand-dark mb-0">{currentFacility.name}</h4>
@@ -1691,14 +1715,22 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                         <div key={court.id} className="col-lg-4 col-md-6">
                           <div className="card h-100 border-0 shadow-sm rounded-3 overflow-hidden bg-white">
                             <div className="position-relative" style={{ height: '170px' }}>
-                              <img
-                                src={court.imageUrl}
-                                alt={court.name}
-                                className="w-100 h-100 object-fit-cover"
-                              />
+                              {court.imageUrl && !failedCourtImages[court.id] ? (
+                                <img
+                                  src={court.imageUrl}
+                                  alt={court.name}
+                                  className="w-100 h-100 object-fit-cover"
+                                  onError={() => setFailedCourtImages(prev => ({ ...prev, [court.id]: true }))}
+                                />
+                              ) : (
+                                <div className="court-placeholder-box">
+                                  <i className="bi bi-image fs-2 opacity-75 mb-1"></i>
+                                  <span className="small opacity-75">Chưa có ảnh sân con</span>
+                                </div>
+                              )}
                               <div className="position-absolute top-0 start-0 m-2">
                                 <span className="badge bg-dark bg-opacity-75 text-uppercase">
-                                  {court.sportType}
+                                  {court.sportType || 'THỂ THAO'}
                                 </span>
                               </div>
                               <div className="position-absolute top-0 end-0 m-2 d-flex gap-1">
@@ -2357,6 +2389,17 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                               placeholder="Ví dụ: Bãi đỗ xe, Đèn LED ban đêm, Phòng tắm nóng lạnh"
                             />
                           </div>
+
+                          <div className="col-12">
+                            <label className="form-label small fw-semibold">Ảnh Đại Diện Cụm Sân (URL - tùy chọn)</label>
+                            <input
+                              type="url"
+                              className="form-control"
+                              value={settingsForm.image_url}
+                              onChange={(e) => setSettingsForm(prev => ({ ...prev, image_url: e.target.value }))}
+                              placeholder="https://... (nếu để trống sẽ tự ưu tiên ảnh từ sân con hoặc khung giữ chỗ)"
+                            />
+                          </div>
                         </div>
 
                         <h6 className="fw-bold text-dark mt-4 mb-3 border-top pt-3">Hồ Sơ Doanh Nghiệp & Tài Khoản Ngân Hàng</h6>
@@ -2502,8 +2545,8 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                         name="courtName"
                         className="form-control"
                         required
-                        defaultValue={editingCourt ? editingCourt.name : `Sân Số ${currentSubCourts.length + 1}`}
-                        placeholder="Ví dụ: Sân Padel 3 (Panoramic VIP)"
+                        defaultValue={editingCourt ? editingCourt.name : ''}
+                        placeholder={`Ví dụ: Sân Số ${currentSubCourts.length + 1}`}
                       />
                     </div>
                     <div className="col-md-5">
@@ -2526,7 +2569,8 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                         type="text"
                         name="courtType"
                         className="form-control"
-                        defaultValue={editingCourt ? editingCourt.courtType : 'Ngoài trời có mái che'}
+                        defaultValue={editingCourt ? editingCourt.courtType : ''}
+                        placeholder="Ví dụ: Ngoài trời có mái che"
                       />
                     </div>
 
@@ -2536,7 +2580,8 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                         type="text"
                         name="surfaceType"
                         className="form-control"
-                        defaultValue={editingCourt ? editingCourt.surfaceType : 'Cỏ nhân tạo chuẩn quốc tế'}
+                        defaultValue={editingCourt ? editingCourt.surfaceType : ''}
+                        placeholder="Ví dụ: Cỏ nhân tạo chuẩn quốc tế"
                       />
                     </div>
 
@@ -2546,7 +2591,8 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                         type="text"
                         name="amenitiesText"
                         className="form-control"
-                        defaultValue={editingCourt ? (editingCourt.amenities || []).join(', ') : 'Đèn LED 400W, Nước uống, Bãi đỗ xe'}
+                        defaultValue={editingCourt ? (editingCourt.amenities || []).join(', ') : ''}
+                        placeholder="Ví dụ: Đèn LED 400W, Nước uống, Bãi đỗ xe"
                       />
                     </div>
 
@@ -2558,7 +2604,8 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                         className="form-control"
                         required
                         min="0"
-                        defaultValue={editingCourt ? editingCourt.priceNormal : 200000}
+                        defaultValue={editingCourt ? editingCourt.priceNormal : ''}
+                        placeholder="Ví dụ: 200000"
                         step="10000"
                       />
                     </div>
@@ -2571,18 +2618,20 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                         className="form-control"
                         required
                         min="0"
-                        defaultValue={editingCourt ? editingCourt.pricePeak : 320000}
+                        defaultValue={editingCourt ? editingCourt.pricePeak : ''}
+                        placeholder="Ví dụ: 300000"
                         step="10000"
                       />
                     </div>
 
                     <div className="col-12">
-                      <label className="form-label small fw-semibold">Đường Dẫn Hình Ảnh Thực Tế Của Sân</label>
+                      <label className="form-label small fw-semibold">Đường Dẫn Hình Ảnh Thực Tế Của Sân (tùy chọn)</label>
                       <input
                         type="url"
                         name="imageUrl"
                         className="form-control"
-                        defaultValue={editingCourt ? editingCourt.imageUrl : 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=600&q=80'}
+                        defaultValue={editingCourt ? editingCourt.imageUrl : ''}
+                        placeholder="https://... (để trống nếu chưa có ảnh)"
                       />
                     </div>
 
@@ -2884,7 +2933,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                     </div>
                     <div className="col-md-5">
                       <label className="form-label small fw-semibold">Bộ Môn Thể Thao Chính (*)</label>
-                      <select name="sportTypeId" className="form-select" required defaultValue={sportTypes[0]?.sport_type_id || 1}>
+                      <select name="sportTypeId" className="form-select" required defaultValue={sportTypes[0]?.sport_type_id || ''}>
                         {sportTypes.map(st => (
                           <option key={st.sport_type_id} value={st.sport_type_id}>{st.name}</option>
                         ))}
@@ -2898,17 +2947,22 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
 
                     <div className="col-md-6">
                       <label className="form-label small fw-semibold">Thành Phố / Khu Vực</label>
-                      <input type="text" name="area" className="form-control" defaultValue="TP. Hồ Chí Minh" />
+                      <input type="text" name="area" className="form-control" placeholder="Ví dụ: TP. Hồ Chí Minh" />
                     </div>
 
                     <div className="col-md-6">
                       <label className="form-label small fw-semibold">Giá Thuê Tham Khảo (VNĐ/slot) (*)</label>
-                      <input type="number" name="pricePerSlot" className="form-control" required min="0" step="10000" defaultValue="200000" />
+                      <input type="number" name="pricePerSlot" className="form-control" required min="0" step="10000" placeholder="Ví dụ: 200000" />
                     </div>
 
                     <div className="col-12">
                       <label className="form-label small fw-semibold">Tiện Ích & Mô Tả Cụm Sân</label>
-                      <input type="text" name="description" className="form-control" defaultValue="Bãi đỗ xe, Đèn Led ban đêm, Phòng thay đồ" />
+                      <input type="text" name="description" className="form-control" placeholder="Ví dụ: Bãi đỗ xe, Đèn LED ban đêm, Phòng thay đồ" />
+                    </div>
+
+                    <div className="col-12">
+                      <label className="form-label small fw-semibold">Ảnh Đại Diện Cụm Sân (URL - tùy chọn)</label>
+                      <input type="url" name="imageUrl" className="form-control" placeholder="https://... (để trống nếu chưa có ảnh)" />
                     </div>
 
                     <div className="col-md-4">

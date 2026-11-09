@@ -5,6 +5,8 @@ import { formatDisplayDate } from '../utils/vietqr';
 export default function CourtList({
   courts,
   loading,
+  error = '',
+  onRetry,
   onBookNow,
   favoriteCourtIds = [],
   onToggleFavorite,
@@ -40,13 +42,24 @@ export default function CourtList({
         </div>
       </div>
 
-      {/* Loading state */}
+      {/* Loading / Error / Empty / Grid state */}
       {loading ? (
         <div className="text-center py-5">
           <div className="spinner-border text-success" role="status">
             <span className="visually-hidden">Đang tải...</span>
           </div>
           <p className="mt-2 text-muted">Đang cập nhật danh sách sân mới nhất...</p>
+        </div>
+      ) : error ? (
+        <div className="text-center py-5 bg-danger-subtle bg-opacity-25 rounded-4 border border-danger-subtle">
+          <i className="bi bi-wifi-off fs-1 text-danger"></i>
+          <h5 className="mt-3 fw-bold text-danger-emphasis">Không thể tải dữ liệu sân từ máy chủ</h5>
+          <p className="text-muted small mb-3">{error}</p>
+          {onRetry && (
+            <button type="button" className="btn btn-brand btn-sm" onClick={onRetry}>
+              <i className="bi bi-arrow-clockwise me-1"></i>Thử tải lại
+            </button>
+          )}
         </div>
       ) : courts.length === 0 ? (
         <div className="text-center py-5 bg-light rounded-4 border">

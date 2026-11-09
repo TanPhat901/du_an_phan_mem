@@ -1002,3 +1002,17 @@ body {
   background-color: #fef2f2;
   color: #dc2626 !important;
 }
+
+/* Clean visual placeholder when a facility or sub-court has no uploaded photo */
+.court-placeholder-box {
+  background: linear-gradient(135deg, #0b4d3c 0%, #11785c 55%, #064e3b 100%);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+  height: 100%;
+  padding: 1rem;
+}

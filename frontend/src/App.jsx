@@ -6,71 +6,15 @@ import CourtList from './components/CourtList';
 import PartnerBanner from './components/PartnerBanner';
 import Footer from './components/Footer';
 import BookingModal from './components/BookingModal';
-import PartnerModal from './components/PartnerModal';
-import MyBookingsModal from './components/MyBookingsModal';
+import MyBookingsPage from './components/MyBookingsPage';
 import AuthPage from './components/AuthPage';
 import CourtDetailPage from './components/CourtDetailPage';
 import OwnerDashboard from './components/OwnerDashboard';
 import ProfilePage from './components/ProfilePage';
 import { formatLocalYMD, getStoredToken } from './utils/vietqr';
 
-// Initial fallback courts identical to backend JSON & screenshot
-const INITIAL_COURTS = [
-  {
-    id: 1,
-    name: 'The Yard Padel Club Thảo Điền',
-    category: 'PADEL & PICKLEBALL',
-    sportType: 'pickleball',
-    rating: 0,
-    ratingFormatted: 'Mới',
-    reviewCount: 0,
-    address: 'Nguyễn Văn Hưởng, Phường Thảo Điền, TP. Thủ Đức',
-    city: 'TP. Hồ Chí Minh',
-    pricePerHour: 280000,
-    priceFormatted: '280.000đ',
-    imageUrl: 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&q=80',
-    amenities: ['Bãi đỗ ô tô', 'Phòng tắm nóng lạnh', 'Café / Quầy nước'],
-    featured: true,
-    availableSlots: ['06:00 - 07:00', '07:00 - 08:00', '17:00 - 18:00', '18:00 - 19:00', '19:00 - 20:00', '20:00 - 21:00']
-  },
-  {
-    id: 2,
-    name: 'Trung Tâm Celadon Sport Club',
-    category: 'BÓNG ĐÁ & TENNIS',
-    sportType: 'football',
-    rating: 0,
-    ratingFormatted: 'Mới',
-    reviewCount: 0,
-    address: 'Đường N1, Sơn Kỳ, Tân Phú, TP. Hồ Chí Minh',
-    city: 'TP. Hồ Chí Minh',
-    pricePerHour: 190000,
-    priceFormatted: '190.000đ',
-    imageUrl: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
-    amenities: ['Đèn Led ban đêm', 'Khán đài có mái', 'Bảo vệ 24/7'],
-    featured: true,
-    availableSlots: ['07:00 - 08:30', '16:00 - 17:30', '18:00 - 19:30', '19:30 - 21:00', '21:00 - 22:30']
-  },
-  {
-    id: 3,
-    name: 'Sky Garden Arena Phú Mỹ Hưng',
-    category: 'CẦU LÔNG TRONG NHÀ',
-    sportType: 'badminton',
-    rating: 0,
-    ratingFormatted: 'Mới',
-    reviewCount: 0,
-    address: 'Phạm Văn Nghị, Tân Phong, Quận 7, TP. HCM',
-    city: 'TP. Hồ Chí Minh',
-    pricePerHour: 140000,
-    priceFormatted: '140.000đ',
-    imageUrl: 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=800&q=80',
-    amenities: ['Máy lạnh công suất lớn', 'Thảm Yonex chuẩn thi đấu'],
-    featured: true,
-    availableSlots: ['06:00 - 07:00', '08:00 - 09:00', '16:00 - 17:00', '17:00 - 18:00', '19:00 - 20:00']
-  }
-];
-
 export default function App() {
-  const [currentView, setCurrentView] = useState('home'); // 'home' | 'login' | 'register' | 'register-owner' | 'profile' | 'owner-dashboard' | 'court-detail'
+  const [currentView, setCurrentView] = useState('home'); // 'home' | 'login' | 'register' | 'register-owner' | 'profile' | 'owner-dashboard' | 'court-detail' | 'my-bookings'
   const [currentUser, setCurrentUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
 
@@ -104,8 +48,9 @@ export default function App() {
     };
   }, []);
 
-  const [courts, setCourts] = useState(INITIAL_COURTS);
-  const [loading, setLoading] = useState(false);
+  const [courts, setCourts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [courtsError, setCourtsError] = useState('');
   const [activeTab, setActiveTab] = useState('home');
   const [activeSearchTab, setActiveSearchTab] = useState('search');
 
@@ -126,10 +71,9 @@ export default function App() {
   // Modals & Detail state
   const [selectedCourtDetail, setSelectedCourtDetail] = useState(null);
   const [postAuthReturnCourt, setPostAuthReturnCourt] = useState(null);
+  const [postAuthReturnView, setPostAuthReturnView] = useState(null);
   const [detailScrollToReviews, setDetailScrollToReviews] = useState(false);
   const [selectedCourtForBooking, setSelectedCourtForBooking] = useState(null);
-  const [showPartnerModal, setShowPartnerModal] = useState(false);
-  const [showMyBookings, setShowMyBookings] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
   // Real bookings state (tải từ PostgreSQL)
@@ -214,14 +158,15 @@ export default function App() {
   }, [currentUser, loadMyBookings, loadFavorites]);
 
   useEffect(() => {
-    if (showMyBookings && currentUser) {
+    if (currentView === 'my-bookings' && currentUser) {
       loadMyBookings();
     }
-  }, [showMyBookings, currentUser, loadMyBookings]);
+  }, [currentView, currentUser, loadMyBookings]);
 
   // Fetch courts from backend API
   const fetchCourts = useCallback(async () => {
     setLoading(true);
+    setCourtsError('');
     try {
       const params = new URLSearchParams();
       if (keyword) params.append('keyword', keyword);
@@ -237,31 +182,14 @@ export default function App() {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
       const res = await fetch(`http://localhost:5000/api/courts?${params.toString()}`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.data) {
-          setCourts(data.data);
-          setLoading(false);
-          return;
-        }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success || !Array.isArray(data.data)) {
+        throw new Error(data.message || 'Không thể tải danh sách sân thể thao.');
       }
-      throw new Error('Fallback to local filter');
-    } catch {
-      let filtered = [...INITIAL_COURTS];
-      if (keyword) {
-        const kw = keyword.toLowerCase();
-        filtered = filtered.filter((c) => c.name.toLowerCase().includes(kw) || c.category.toLowerCase().includes(kw));
-      }
-      if (selectedCity) {
-        filtered = filtered.filter((c) => c.city.toLowerCase().includes(selectedCity.toLowerCase()));
-      }
-      if (selectedCategory) {
-        filtered = filtered.filter((c) => c.category.toLowerCase().includes(selectedCategory.toLowerCase()));
-      }
-      if (maxPrice) {
-        filtered = filtered.filter((c) => c.pricePerHour <= parseInt(maxPrice, 10));
-      }
-      setCourts(filtered);
+      setCourts(data.data);
+    } catch (err) {
+      setCourts([]);
+      setCourtsError(err.message || 'Không thể kết nối máy chủ để tải danh sách sân.');
     } finally {
       setLoading(false);
     }
@@ -382,11 +310,21 @@ export default function App() {
     loadMyBookings();
   };
 
+  const openMyBookingsPage = () => {
+    setSelectedCourtForBooking(null);
+    setDetailScrollToReviews(false);
+    setActiveSearchTab('search');
+    setActiveTab('bookings');
+    setCurrentView('my-bookings');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleTabChange = (tab) => {
-    setActiveSearchTab(tab);
     if (tab === 'my-bookings') {
-      setShowMyBookings(true);
+      openMyBookingsPage();
+      return;
     }
+    setActiveSearchTab(tab);
   };
 
   const handleBookingSuccess = (newBooking) => {
@@ -409,8 +347,9 @@ export default function App() {
     showNotification(`Đã hủy đơn đặt sân ${bookingId}.`);
   };
 
-  const openAuthView = (mode, returnCourt = null) => {
+  const openAuthView = (mode, returnCourt = null, returnView = null) => {
     setPostAuthReturnCourt(returnCourt);
+    setPostAuthReturnView(returnView);
     setCurrentView(mode);
   };
 
@@ -427,6 +366,7 @@ export default function App() {
     localStorage.setItem('sportsbooking_user', JSON.stringify(user));
     if (userData.role === 'OWNER') {
       setPostAuthReturnCourt(null);
+      setPostAuthReturnView(null);
       showNotification(`🎉 Chào mừng Đối tác Chủ sân ${userData.fullName}! Chuyển đến Giao diện Quản lý Chủ Sân.`);
       setCurrentView('owner-dashboard');
       return;
@@ -435,9 +375,17 @@ export default function App() {
     if (postAuthReturnCourt) {
       setSelectedCourtDetail(postAuthReturnCourt);
       setPostAuthReturnCourt(null);
+      setPostAuthReturnView(null);
       setCurrentView('court-detail');
       return;
     }
+    if (postAuthReturnView === 'my-bookings') {
+      setPostAuthReturnView(null);
+      setActiveTab('bookings');
+      setCurrentView('my-bookings');
+      return;
+    }
+    setPostAuthReturnView(null);
     setCurrentView('home');
   };
 
@@ -491,8 +439,8 @@ export default function App() {
           </div>
         )}
         <Navbar
-          onOpenAuth={(mode) => setCurrentView(mode)}
-          onOpenMyBookings={() => setShowMyBookings(true)}
+          onOpenAuth={(mode) => openAuthView(mode)}
+          onOpenMyBookings={openMyBookingsPage}
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
           onOpenProfile={() => setCurrentView('profile')}
           onGoHome={navigateToHome}
@@ -502,38 +450,77 @@ export default function App() {
           currentUser={currentUser}
           onLogout={() => {
             handleLogout();
-            setCurrentView('home');
+            navigateToHome('home');
           }}
         />
         <ProfilePage
           currentUser={currentUser}
           onProfileUpdated={handleProfileUpdated}
-          onBackToHome={() => setCurrentView('home')}
-          onOpenMyBookings={() => setShowMyBookings(true)}
+          onBackToHome={() => navigateToHome('home')}
+          onOpenMyBookings={openMyBookingsPage}
           onOpenCourt={(fav) => openCourtById(fav)}
           onToggleFavorite={handleToggleFavorite}
           onLogout={() => {
             handleLogout();
-            setCurrentView('home');
+            navigateToHome('home');
           }}
         />
         <Footer
-          onOpenAuth={(mode) => setCurrentView(mode)}
+          onOpenAuth={(mode) => openAuthView(mode)}
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
         />
-        {showMyBookings && (
-          <MyBookingsModal
-            bookings={bookings}
-            loading={bookingsLoading}
-            currentUser={currentUser}
-            onRefreshBookings={loadMyBookings}
-            onLookupByPhone={lookupBookingsByPhone}
-            onCancelSuccess={handleCancelSuccess}
-            onRebookCourt={(cId) => openCourtById(cId)}
-            onReviewCourt={(cId) => openCourtById(cId, { focusReviews: true })}
-            onClose={() => setShowMyBookings(false)}
-          />
+      </div>
+    );
+  }
+
+  // Dedicated My Bookings Page
+  if (currentView === 'my-bookings') {
+    return (
+      <div className="min-vh-100 d-flex flex-column bg-white">
+        {toastMessage && (
+          <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1100 }}>
+            <div className="alert alert-success shadow-lg border-0 d-flex align-items-center gap-2 mb-0 py-3 px-4 rounded-3 text-dark">
+              <i className="bi bi-check-circle-fill text-success fs-5"></i>
+              <div>
+                <strong>Thông báo:</strong> {toastMessage}
+              </div>
+              <button type="button" className="btn-close ms-auto" onClick={() => setToastMessage('')}></button>
+            </div>
+          </div>
         )}
+        <Navbar
+          onOpenAuth={(mode) => openAuthView(mode, null, 'my-bookings')}
+          onOpenMyBookings={openMyBookingsPage}
+          onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+          onOpenProfile={() => setCurrentView('profile')}
+          onGoHome={navigateToHome}
+          activeTab="bookings"
+          setActiveTab={setActiveTab}
+          activeView="my-bookings"
+          currentUser={currentUser}
+          onLogout={() => {
+            handleLogout();
+            navigateToHome('home');
+          }}
+        />
+        <MyBookingsPage
+          bookings={bookings}
+          loading={bookingsLoading}
+          currentUser={currentUser}
+          onRequireAuth={(mode) => openAuthView(mode, null, 'my-bookings')}
+          onBackToHome={() => navigateToHome('home')}
+          onOpenSearchCourts={() => navigateToHome('search')}
+          onOpenProfile={() => setCurrentView('profile')}
+          onRefreshBookings={loadMyBookings}
+          onLookupByPhone={lookupBookingsByPhone}
+          onCancelSuccess={handleCancelSuccess}
+          onRebookCourt={(cId) => openCourtById(cId)}
+          onReviewCourt={(cId) => openCourtById(cId, { focusReviews: true })}
+        />
+        <Footer
+          onOpenAuth={(mode) => openAuthView(mode, null, 'my-bookings')}
+          onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+        />
       </div>
     );
   }
@@ -546,7 +533,8 @@ export default function App() {
         initialRole={currentView === 'register-owner' ? 'OWNER' : 'USER'}
         onBackToHome={() => {
           setPostAuthReturnCourt(null);
-          setCurrentView('home');
+          setPostAuthReturnView(null);
+          navigateToHome('home');
         }}
         onAuthSuccess={handleAuthSuccess}
       />
@@ -557,11 +545,15 @@ export default function App() {
   if (currentView === 'owner-dashboard') {
     return (
       <OwnerDashboard
-        onOpenAuth={(mode) => setCurrentView(mode)}
+        onOpenAuth={(mode) => openAuthView(mode)}
         onOpenProfile={() => setCurrentView('profile')}
+        onOpenMyBookings={openMyBookingsPage}
         currentUser={currentUser}
         onBackToHome={() => navigateToHome('home')}
-        onLogout={handleLogout}
+        onLogout={() => {
+          handleLogout();
+          navigateToHome('home');
+        }}
       />
     );
   }
@@ -584,8 +576,8 @@ export default function App() {
         )}
 
         <Navbar
-          onOpenAuth={(mode) => setCurrentView(mode)}
-          onOpenMyBookings={() => setShowMyBookings(true)}
+          onOpenAuth={(mode) => openAuthView(mode, selectedCourtDetail)}
+          onOpenMyBookings={openMyBookingsPage}
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
           onOpenProfile={() => setCurrentView('profile')}
           onGoHome={navigateToHome}
@@ -614,8 +606,13 @@ export default function App() {
               openAuthView('login', selectedCourtDetail);
               return;
             }
+            const resolvedCourtId = bookingPlan.courtId || selectedCourtDetail?.id;
+            if (!resolvedCourtId) {
+              showNotification('Không xác định được cụm sân để đặt.');
+              return;
+            }
             setSelectedCourtForBooking({
-              id: bookingPlan.courtId || selectedCourtDetail?.id || 1,
+              id: resolvedCourtId,
               name: bookingPlan.courtName,
               category: bookingPlan.category || selectedCourtDetail?.category || 'THỂ THAO',
               subCourtId: bookingPlan.subCourtId || null,
@@ -626,10 +623,7 @@ export default function App() {
               pricePerHour: bookingPlan.price,
               priceFormatted: `${Number(bookingPlan.price).toLocaleString('vi-VN')}đ`,
               ownerBank: bookingPlan.ownerBank || selectedCourtDetail?.ownerBank || null,
-              imageUrl:
-                bookingPlan.imageUrl ||
-                selectedCourtDetail?.imageUrl ||
-                'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
+              imageUrl: bookingPlan.imageUrl || selectedCourtDetail?.imageUrl || null,
               availableSlots: [bookingPlan.timeSlot]
             });
           }}
@@ -651,25 +645,7 @@ export default function App() {
             onClose={() => setSelectedCourtForBooking(null)}
             onBookingSuccess={handleBookingSuccess}
             onSlotConflict={() => setAvailabilityRefreshKey((k) => k + 1)}
-            onViewMyBookings={() => setShowMyBookings(true)}
-          />
-        )}
-
-        {showMyBookings && (
-          <MyBookingsModal
-            bookings={bookings}
-            loading={bookingsLoading}
-            currentUser={currentUser}
-            onRequireAuth={(mode) => {
-              setShowMyBookings(false);
-              openAuthView(mode, selectedCourtDetail);
-            }}
-            onRefreshBookings={loadMyBookings}
-            onLookupByPhone={lookupBookingsByPhone}
-            onCancelSuccess={handleCancelSuccess}
-            onRebookCourt={(cId) => openCourtById(cId)}
-            onReviewCourt={(cId) => openCourtById(cId, { focusReviews: true })}
-            onClose={() => setShowMyBookings(false)}
+            onViewMyBookings={openMyBookingsPage}
           />
         )}
       </div>
@@ -693,8 +669,8 @@ export default function App() {
 
       {/* Header / Navbar */}
       <Navbar
-        onOpenAuth={(mode) => setCurrentView(mode)}
-        onOpenMyBookings={() => setShowMyBookings(true)}
+        onOpenAuth={(mode) => openAuthView(mode)}
+        onOpenMyBookings={openMyBookingsPage}
         onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -707,7 +683,11 @@ export default function App() {
 
       <main className="flex-grow-1">
         {/* Hero Section */}
-        <HeroSection />
+        <HeroSection
+          featuredCourt={courts[0] || null}
+          totalCourts={courts.length}
+          onOpenFeatured={(court) => openCourtById(court)}
+        />
 
         {/* Floating Search & Filter Bar */}
         <SearchFilterBar
@@ -739,6 +719,8 @@ export default function App() {
         <CourtList
           courts={courts}
           loading={loading}
+          error={courtsError}
+          onRetry={fetchCourts}
           currentUser={currentUser}
           favoriteCourtIds={favoriteCourtIds}
           onToggleFavorite={handleToggleFavorite}
@@ -750,15 +732,14 @@ export default function App() {
 
         {/* Partner Section Banner */}
         <PartnerBanner
-          onOpenPartnerModal={() => setShowPartnerModal(true)}
-          onOpenAuth={(mode) => setCurrentView(mode)}
+          onOpenAuth={(mode) => openAuthView(mode)}
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
         />
       </main>
 
       {/* Footer */}
       <Footer
-        onOpenAuth={(mode) => setCurrentView(mode)}
+        onOpenAuth={(mode) => openAuthView(mode)}
         onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
       />
 
@@ -774,35 +755,7 @@ export default function App() {
           onClose={() => setSelectedCourtForBooking(null)}
           onBookingSuccess={handleBookingSuccess}
           onSlotConflict={() => setAvailabilityRefreshKey((k) => k + 1)}
-          onViewMyBookings={() => setShowMyBookings(true)}
-        />
-      )}
-
-      {showPartnerModal && (
-        <PartnerModal
-          onClose={() => setShowPartnerModal(false)}
-          onSuccess={(msg) => showNotification(msg)}
-        />
-      )}
-
-      {showMyBookings && (
-        <MyBookingsModal
-          bookings={bookings}
-          loading={bookingsLoading}
-          currentUser={currentUser}
-          onRequireAuth={(mode) => {
-            setShowMyBookings(false);
-            openAuthView(mode);
-          }}
-          onRefreshBookings={loadMyBookings}
-          onLookupByPhone={lookupBookingsByPhone}
-          onCancelSuccess={handleCancelSuccess}
-          onRebookCourt={(cId) => openCourtById(cId)}
-          onReviewCourt={(cId) => openCourtById(cId, { focusReviews: true })}
-          onClose={() => {
-            setShowMyBookings(false);
-            setActiveSearchTab('search');
-          }}
+          onViewMyBookings={openMyBookingsPage}
         />
       )}
     </div>

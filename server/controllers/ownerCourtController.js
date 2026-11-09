@@ -416,6 +416,16 @@ const getMyFacilities = async (req, res) => {
          c.address,
          c.area,
          c.description,
+         c.image_url,
+         (
+           SELECT NULLIF(TRIM(sc_img.image_url), '')
+           FROM sub_courts sc_img
+           WHERE sc_img.court_id = c.court_id
+             AND sc_img.is_visible = TRUE
+             AND NULLIF(TRIM(sc_img.image_url), '') IS NOT NULL
+           ORDER BY sc_img.sub_court_id ASC
+           LIMIT 1
+         ) AS sub_cover_image,
          c.price_per_slot,
          c.operational_status,
          c.is_visible,
@@ -480,13 +490,16 @@ const createFacility = async (req, res) => {
       address,
       area,
       description,
+      image_url,
       price_per_slot,
       open_time,
       close_time,
       slot_duration
     } = req.body || {};
-    const sportTypeId = Number(sport_type_id || 1);
-    const price = Number(price_per_slot || 200000);
+    const sportTypeId = Number(sport_type_id);
+    const price = price_per_slot !== undefined && price_per_slot !== null && price_per_slot !== ''
+      ? Number(price_per_slot)
+      : 0;
     const openObj = parseTimeToMinutes(typeof open_time === 'string' && open_time ? open_time : '06:00');
     const closeObj = parseTimeToMinutes(typeof close_time === 'string' && close_time ? close_time : '22:00');
     const durationMins = slot_duration !== undefined && slot_duration !== '' ? Number(slot_duration) : 60;
@@ -495,7 +508,8 @@ const createFacility = async (req, res) => {
       typeof name !== 'string' || !name.trim() || name.trim().length > 150 ||
       typeof address !== 'string' || !address.trim() || address.trim().length > 255 ||
       !Number.isSafeInteger(sportTypeId) || sportTypeId <= 0 ||
-      !Number.isFinite(price) || price < 0
+      !Number.isFinite(price) || price < 0 ||
+      (image_url != null && typeof image_url !== 'string')
     ) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ Tên cụm sân, Địa chỉ và Giá mặc định hợp lệ.' });
     }
@@ -523,16 +537,17 @@ const createFacility = async (req, res) => {
 
     await client.query('BEGIN');
     const courtRes = await client.query(
-      `INSERT INTO courts (sport_type_id, owner_id, name, address, area, description, price_per_slot, operational_status, is_visible)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE', TRUE)
+      `INSERT INTO courts (sport_type_id, owner_id, name, address, area, description, image_url, price_per_slot, operational_status, is_visible)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', TRUE)
        RETURNING *`,
       [
         sportTypeId,
         userId,
         name.trim(),
         address.trim(),
-        typeof area === 'string' && area.trim() ? area.trim() : 'TP. Hồ Chí Minh',
-        typeof description === 'string' && description.trim() ? description.trim() : 'Bãi đỗ xe, Đèn Led ban đêm, Phòng thay đồ',
+        typeof area === 'string' && area.trim() ? area.trim() : null,
+        typeof description === 'string' && description.trim() ? description.trim() : null,
+        typeof image_url === 'string' && image_url.trim() ? image_url.trim() : null,
         price
       ]
     );
@@ -583,6 +598,7 @@ const updateFacilitySettings = async (req, res) => {
       address,
       area,
       description,
+      image_url,
       price_per_slot,
       operational_status,
       owner_name,
@@ -623,6 +639,7 @@ const updateFacilitySettings = async (req, res) => {
       address !== undefined ||
       area !== undefined ||
       description !== undefined ||
+      image_url !== undefined ||
       price_per_slot !== undefined ||
       operational_status !== undefined
     ) {
@@ -632,8 +649,9 @@ const updateFacilitySettings = async (req, res) => {
       if (typeof name === 'string' && name.trim()) { updates.push(`name = $${idx++}`); vals.push(name.trim()); }
       if (sport_type_id !== undefined) { updates.push(`sport_type_id = $${idx++}`); vals.push(Number(sport_type_id)); }
       if (typeof address === 'string' && address.trim()) { updates.push(`address = $${idx++}`); vals.push(address.trim()); }
-      if (typeof area === 'string') { updates.push(`area = $${idx++}`); vals.push(area.trim()); }
-      if (typeof description === 'string') { updates.push(`description = $${idx++}`); vals.push(description.trim()); }
+      if (typeof area === 'string') { updates.push(`area = $${idx++}`); vals.push(area.trim() || null); }
+      if (typeof description === 'string') { updates.push(`description = $${idx++}`); vals.push(description.trim() || null); }
+      if (image_url !== undefined) { updates.push(`image_url = $${idx++}`); vals.push(typeof image_url === 'string' && image_url.trim() ? image_url.trim() : null); }
       if (price_per_slot !== undefined && Number.isFinite(Number(price_per_slot)) && Number(price_per_slot) >= 0) {
         updates.push(`price_per_slot = $${idx++}`); vals.push(Number(price_per_slot));
       }
@@ -1047,8 +1065,8 @@ const createWalkInBooking = async (req, res) => {
     }
 
     let resolvedSubCourtId = null;
-    let resolvedSubCourtName = 'Sân tiêu chuẩn';
-    let normalPrice = Number(ownerCheck.rows[0].price_per_slot || 200000);
+    let resolvedSubCourtName = null;
+    let normalPrice = Number(ownerCheck.rows[0].price_per_slot || 0);
     let peakPrice = normalPrice;
 
     if (parsedSubCourtId) {
