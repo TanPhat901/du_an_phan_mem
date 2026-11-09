@@ -1,59 +1,24 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-// Dữ liệu đặt sân tạm thời cho tab Tổng quan & Lịch đặt (sẽ được thay thế bằng API PostgreSQL ở tính năng tiếp theo)
-const INITIAL_BOOKINGS = [
-  {
-    id: "BK-8021",
-    facilityId: 1,
-    subCourtId: 101,
-    subCourtName: "Sân Padel 1 (Kính Panoramic Pro)",
-    customerName: "Trần Anh Tuấn",
-    customerPhone: "0912345678",
-    date: new Date().toISOString().split('T')[0],
-    timeSlot: "18:00 - 19:00",
-    totalPrice: 350000,
-    paymentMethod: "Online (VNPay QR)",
-    paymentStatus: "PAID",
-    status: "CONFIRMED",
-    note: "Khách mang bóng riêng, cần thuê 2 vợt Padel"
-  },
-  {
-    id: "BK-8022",
-    facilityId: 1,
-    subCourtId: 103,
-    subCourtName: "Sân Pickleball A (Ngoài trời)",
-    customerName: "Lê Thị Thảo",
-    customerPhone: "0988776655",
-    date: new Date().toISOString().split('T')[0],
-    timeSlot: "19:00 - 20:00",
-    totalPrice: 240000,
-    paymentMethod: "Tiền mặt tại quầy",
-    paymentStatus: "PENDING_AT_COUNTER",
-    status: "CONFIRMED",
-    note: "Đặt qua điện thoại, nhóm 4 người chơi giải trí"
-  },
-  {
-    id: "BK-8023",
-    facilityId: 2,
-    subCourtId: 1,
-    subCourtName: "Sân Padel Số 1",
-    customerName: "Hoàng Minh Quân",
-    customerPhone: "0909123888",
-    date: new Date().toISOString().split('T')[0],
-    timeSlot: "20:00 - 21:00",
-    totalPrice: 350000,
-    paymentMethod: "Chuyển khoản VietQR",
-    paymentStatus: "PAID",
-    status: "CHECKED_IN",
-    note: "Khách quen CLB, đã check-in vào sân"
-  }
-];
-
 const FACILITY_FALLBACK_IMAGES = [
   "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&q=80",
   "https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80",
   "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=800&q=80"
 ];
+
+const formatLocalYMD = (dateObj = new Date()) => {
+  const yyyy = dateObj.getFullYear();
+  const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const dd = String(dateObj.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const formatCompactMoney = (amount) => {
+  const num = Number(amount || 0);
+  if (num >= 1000000) return `${(num / 1000000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (num >= 1000) return `${Math.round(num / 1000)}k`;
+  return `${num}đ`;
+};
 
 export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, onOpenAuth }) {
   // Navigation active tab
@@ -61,7 +26,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
 
   const isAuthorizedOwner = Boolean(currentUser && currentUser.role === 'OWNER');
 
-  // State dữ liệu thực từ PostgreSQL
+  // State Cụm sân & Sân con từ PostgreSQL
   const [sportTypes, setSportTypes] = useState([]);
   const [facilities, setFacilities] = useState([]);
   const [selectedFacilityId, setSelectedFacilityId] = useState(null);
@@ -73,9 +38,55 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
   const [courtSaving, setCourtSaving] = useState(false);
   const [courtsError, setCourtsError] = useState('');
 
+  // State Đặt sân, Ma trận khung giờ, Khóa sân & Doanh thu từ PostgreSQL
+  const [bookings, setBookings] = useState([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [bookingsError, setBookingsError] = useState('');
+  const [bookingStatusFilter, setBookingStatusFilter] = useState('ALL');
+
+  const [selectedScheduleDate, setSelectedScheduleDate] = useState(() => formatLocalYMD());
+  const [scheduleData, setScheduleData] = useState({ timeSlots: [], bookings: [], blocks: [] });
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+
+  const [analytics, setAnalytics] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+
+  // Filter & Modals
+  const [courtSportFilter, setCourtSportFilter] = useState('ALL');
   const [showFacilityModal, setShowFacilityModal] = useState(false);
   const [facilitySaving, setFacilitySaving] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
+
+  const [showAddCourtModal, setShowAddCourtModal] = useState(false);
+  const [editingCourt, setEditingCourt] = useState(null);
+
+  const [showWalkInModal, setShowWalkInModal] = useState(false);
+  const [walkInForm, setWalkInForm] = useState({
+    subCourtId: '',
+    slotId: '',
+    date: formatLocalYMD(),
+    customerName: '',
+    customerPhone: '',
+    price: 200000,
+    paymentMethod: 'Tiền mặt tại quầy',
+    status: 'CONFIRMED',
+    note: ''
+  });
+  const [walkInSaving, setWalkInSaving] = useState(false);
+  const [walkInError, setWalkInError] = useState('');
+
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [blockForm, setBlockForm] = useState({
+    subCourtId: '',
+    slotId: '',
+    date: formatLocalYMD(),
+    reason: 'Bảo trì sân'
+  });
+  const [blockSaving, setBlockSaving] = useState(false);
+  const [blockError, setBlockError] = useState('');
+
+  const [selectedBookingDetail, setSelectedBookingDetail] = useState(null);
+  const [toastMessage, setToastMessage] = useState('');
 
   // Form controlled state cho Cài đặt cơ sở
   const [settingsForm, setSettingsForm] = useState({
@@ -144,10 +155,6 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
       bankAccountNo: f.bank_account_no || '',
       bankAccountName: f.bank_account_name || '',
       openTime: '06:00 - 22:00',
-      monthlyRevenue: 0,
-      totalBookings: 0,
-      occupancyRate: 0,
-      rating: '4.9',
       imageUrl: FACILITY_FALLBACK_IMAGES[(idNum - 1) % FACILITY_FALLBACK_IMAGES.length]
     };
   }, [currentUser?.email, currentUser?.fullName]);
@@ -213,6 +220,58 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     }
   }, [ownerRequest]);
 
+  const loadBookings = useCallback(async (facilityId) => {
+    if (!facilityId) return;
+    setBookingsLoading(true);
+    setBookingsError('');
+    try {
+      const payload = await ownerRequest(`/bookings?courtId=${facilityId}`);
+      setBookings(payload.data || []);
+    } catch (error) {
+      setBookingsError(error.message);
+      setBookings([]);
+    } finally {
+      setBookingsLoading(false);
+    }
+  }, [ownerRequest]);
+
+  const loadSchedule = useCallback(async (facilityId, dateStr) => {
+    if (!facilityId || !dateStr) return;
+    setScheduleLoading(true);
+    try {
+      const payload = await ownerRequest(`/schedule?courtId=${facilityId}&date=${dateStr}`);
+      setScheduleData(payload.data || { timeSlots: [], bookings: [], blocks: [] });
+    } catch {
+      setScheduleData({ timeSlots: [], bookings: [], blocks: [] });
+    } finally {
+      setScheduleLoading(false);
+    }
+  }, [ownerRequest]);
+
+  const loadAnalytics = useCallback(async (facilityId, dateStr) => {
+    if (!facilityId) return;
+    setAnalyticsLoading(true);
+    try {
+      const payload = await ownerRequest(`/analytics?courtId=${facilityId}&date=${dateStr || formatLocalYMD()}`);
+      setAnalytics(payload.data || null);
+    } catch {
+      setAnalytics(null);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [ownerRequest]);
+
+  const refreshOperationalData = useCallback(async (facilityId, scheduleDate) => {
+    const fId = facilityId || selectedFacilityId;
+    const dStr = scheduleDate || selectedScheduleDate;
+    if (!fId) return;
+    await Promise.all([
+      loadBookings(fId),
+      loadSchedule(fId, dStr),
+      loadAnalytics(fId, dStr)
+    ]);
+  }, [selectedFacilityId, selectedScheduleDate, loadBookings, loadSchedule, loadAnalytics]);
+
   useEffect(() => {
     if (!isAuthorizedOwner) {
       setFacilitiesLoading(false);
@@ -224,34 +283,13 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     loadCourts();
   }, [isAuthorizedOwner, currentUser?.id, loadSportTypes, loadFacilities, loadCourts]);
 
-  // Bookings state
-  const [bookings, setBookings] = useState(() => {
-    const saved = localStorage.getItem('sportsbooking_owner_bookings');
-    return saved ? JSON.parse(saved) : INITIAL_BOOKINGS;
-  });
-
-  // Date selection for Schedule Matrix
-  const [selectedScheduleDate, setSelectedScheduleDate] = useState(() => {
-    return new Date().toISOString().split('T')[0];
-  });
-
-  // Filter sport type in Courts tab
-  const [courtSportFilter, setCourtSportFilter] = useState('ALL');
-
-  // Modals state
-  const [showAddCourtModal, setShowAddCourtModal] = useState(false);
-  const [editingCourt, setEditingCourt] = useState(null);
-  const [showWalkInModal, setShowWalkInModal] = useState(false);
-  const [selectedSlotForWalkIn, setSelectedSlotForWalkIn] = useState(null);
-  const [selectedBookingDetail, setSelectedBookingDetail] = useState(null);
-  const [toastMessage, setToastMessage] = useState('');
-
-  useEffect(() => {
-    localStorage.setItem('sportsbooking_owner_bookings', JSON.stringify(bookings));
-  }, [bookings]);
-
-  // Current active facility object
   const currentFacility = facilities.find(f => f.id === selectedFacilityId) || facilities[0] || null;
+
+  // Tải Bookings, Ma trận lịch & Thống kê thật khi đổi cụm sân hoặc đổi ngày xem lịch
+  useEffect(() => {
+    if (!isAuthorizedOwner || !currentFacility?.id) return;
+    refreshOperationalData(currentFacility.id, selectedScheduleDate);
+  }, [isAuthorizedOwner, currentFacility?.id, selectedScheduleDate, refreshOperationalData]);
 
   // Đồng bộ form cài đặt khi đổi cụm sân hoặc tải lại dữ liệu từ PostgreSQL
   useEffect(() => {
@@ -292,12 +330,10 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     currentFacility?.bankAccountName
   ]);
 
-  // Sub-courts belonging to current facility
   const currentSubCourts = currentFacility
     ? subCourts.filter(c => c.facilityId === currentFacility.id)
     : [];
 
-  // Danh sách bộ môn hiển thị của cụm sân
   const facilitySports = currentFacility
     ? Array.from(new Set([
         ...currentSubCourts.map(c => c.sportType).filter(Boolean),
@@ -305,35 +341,32 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
       ].filter(Boolean)))
     : [];
 
-  // Filtered sub-courts for Courts tab
   const filteredSubCourts = currentSubCourts.filter(c => {
     if (courtSportFilter === 'ALL') return true;
     return c.sportType.toLowerCase() === courtSportFilter.toLowerCase();
   });
 
-  // Bookings belonging to current facility
-  const currentBookings = currentFacility
-    ? bookings.filter(b => b.facilityId === currentFacility.id)
-    : [];
-
-  // Bookings for selected schedule date
-  const scheduleBookings = currentBookings.filter(b => b.date === selectedScheduleDate);
+  const todayYmd = formatLocalYMD();
+  const todayBookings = bookings.filter(b => b.date === todayYmd);
+  const filteredBookingsList = bookings.filter(b => {
+    if (bookingStatusFilter === 'ALL') return true;
+    return b.status === bookingStatusFilter;
+  });
 
   const showToast = (msg) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(''), 4000);
+    setTimeout(() => setToastMessage(''), 4500);
   };
 
-  // Switch facility handler
   const handleSelectFacility = (facId) => {
     const idNum = Number(facId);
     setSelectedFacilityId(idNum);
     setCourtSportFilter('ALL');
+    setBookingStatusFilter('ALL');
     const found = facilities.find(f => f.id === idNum);
     if (found) showToast(`Đã chuyển sang quản lý cụm sân: ${found.name}`);
   };
 
-  // Tạo cụm sân mới trong PostgreSQL
   const handleCreateFacility = async (e) => {
     e.preventDefault();
     if (facilitySaving) return;
@@ -363,7 +396,6 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     }
   };
 
-  // Cập nhật trạng thái sân con trong PostgreSQL
   const handleToggleCourtStatus = async (courtId) => {
     const court = subCourts.find(c => c.id === courtId);
     if (!court) return;
@@ -373,19 +405,20 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     try {
       await ownerRequest(`/courts/${courtId}`, { method: 'PUT', body: JSON.stringify(payload) });
       await loadCourts();
+      await loadAnalytics(currentFacility?.id, selectedScheduleDate);
       showToast(`Đã cập nhật trạng thái sân thành ${payload.status}.`);
     } catch (error) {
       showToast(`Không thể cập nhật: ${error.message}`);
     }
   };
 
-  // Xóa sân con khỏi PostgreSQL (hoặc đóng & ẩn nếu đã có lịch sử đặt)
   const handleDeleteCourt = async (court) => {
     if (!court) return;
     if (!window.confirm(`Bạn có chắc muốn xóa sân "${court.name}"?`)) return;
     try {
       const payload = await ownerRequest(`/courts/${court.id}`, { method: 'DELETE' });
       await loadCourts();
+      await loadAnalytics(currentFacility?.id, selectedScheduleDate);
       showToast(payload.message || 'Đã xóa sân con thành công!');
     } catch (error) {
       showToast(`Xóa thất bại: ${error.message}`);
@@ -442,6 +475,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
         body: JSON.stringify(body)
       });
       await loadCourts();
+      await loadAnalytics(currentFacility?.id, selectedScheduleDate);
       setShowAddCourtModal(false);
       showToast(editingCourt ? 'Đã lưu thay đổi vào PostgreSQL.' : 'Đã thêm sân mới vào PostgreSQL.');
     } catch (error) {
@@ -451,7 +485,6 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     }
   };
 
-  // Lưu cấu hình cơ sở + thông tin ngân hàng chủ sân
   const handleSaveFacilitySettings = async (e) => {
     e.preventDefault();
     if (!currentFacility || settingsSaving) return;
@@ -485,31 +518,211 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     }
   };
 
-  // Update booking status (sẽ đồng bộ API ở tính năng 3)
-  const handleUpdateBookingStatus = (bookingId, newStatus) => {
-    setBookings(prev => prev.map(b => (b.id === bookingId ? { ...b, status: newStatus } : b)));
-    showToast(`Đã cập nhật đơn đặt [${bookingId}] sang: ${newStatus}`);
-    if (selectedBookingDetail) setSelectedBookingDetail(null);
+  // Mở modal Đặt tại quầy với giá tự tính theo sân & khung giờ
+  const openWalkInModal = (preset = {}) => {
+    const activeSubs = currentSubCourts.filter(c => c.status === 'ACTIVE');
+    const chosenSub =
+      activeSubs.find(c => Number(c.id) === Number(preset.subCourtId)) ||
+      activeSubs[0] ||
+      currentSubCourts[0];
+    const slots = scheduleData.timeSlots || [];
+    const chosenSlot =
+      slots.find(s => Number(s.slotId) === Number(preset.slotId)) ||
+      slots[0];
+
+    const computedPrice = chosenSub
+      ? (chosenSlot?.isPeak ? chosenSub.peakPrice : chosenSub.normalPrice)
+      : (currentFacility?.pricePerSlot || 200000);
+
+    setWalkInForm({
+      subCourtId: chosenSub ? String(chosenSub.id) : '',
+      slotId: chosenSlot ? String(chosenSlot.slotId) : '',
+      date: preset.date || selectedScheduleDate,
+      customerName: '',
+      customerPhone: '',
+      price: preset.price !== undefined ? Number(preset.price) : computedPrice,
+      paymentMethod: 'Tiền mặt tại quầy',
+      status: 'CONFIRMED',
+      note: ''
+    });
+    setWalkInError('');
+    setShowWalkInModal(true);
   };
 
-  // Timeline slots (06:00 to 22:00)
-  const timeSlotsList = [
-    "06:00 - 07:00",
-    "07:00 - 08:00",
-    "08:00 - 09:00",
-    "09:00 - 10:00",
-    "15:00 - 16:00",
-    "16:00 - 17:00",
-    "17:00 - 18:00",
-    "18:00 - 19:00",
-    "19:00 - 20:00",
-    "20:00 - 21:00",
-    "21:00 - 22:00"
-  ];
+  const handleWalkInSubOrSlotChange = (nextSubCourtId, nextSlotId) => {
+    const chosenSub = currentSubCourts.find(c => String(c.id) === String(nextSubCourtId));
+    const chosenSlot = (scheduleData.timeSlots || []).find(s => String(s.slotId) === String(nextSlotId));
+    const computedPrice = chosenSub
+      ? (chosenSlot?.isPeak ? chosenSub.peakPrice : chosenSub.normalPrice)
+      : walkInForm.price;
+    setWalkInForm(prev => ({
+      ...prev,
+      subCourtId: nextSubCourtId,
+      slotId: nextSlotId,
+      price: computedPrice
+    }));
+  };
 
-  // Calculate real-time stats for current facility
+  const handleCreateWalkIn = async (e) => {
+    e.preventDefault();
+    if (!currentFacility || walkInSaving) return;
+    setWalkInSaving(true);
+    setWalkInError('');
+    try {
+      const payload = await ownerRequest('/bookings/walk-in', {
+        method: 'POST',
+        body: JSON.stringify({
+          courtId: currentFacility.id,
+          subCourtId: walkInForm.subCourtId ? Number(walkInForm.subCourtId) : null,
+          slotId: walkInForm.slotId ? Number(walkInForm.slotId) : null,
+          date: walkInForm.date,
+          customerName: walkInForm.customerName.trim(),
+          customerPhone: walkInForm.customerPhone.trim(),
+          totalPrice: Number(walkInForm.price || 0),
+          paymentMethod: walkInForm.paymentMethod,
+          status: walkInForm.status,
+          note: walkInForm.note.trim()
+        })
+      });
+      await refreshOperationalData(currentFacility.id, selectedScheduleDate);
+      setShowWalkInModal(false);
+      showToast(payload.message || 'Tạo đơn đặt tại quầy thành công!');
+    } catch (error) {
+      setWalkInError(error.message);
+    } finally {
+      setWalkInSaving(false);
+    }
+  };
+
+  // Cập nhật trạng thái đơn (COMPLETED / CANCELLED) vào PostgreSQL
+  const handleUpdateBookingStatus = async (bookingId, newStatus) => {
+    let reason = '';
+    if (newStatus === 'CANCELLED') {
+      const promptReason = window.prompt(
+        `Xác nhận hủy đơn [${bookingId}]?\nNhập lý do hủy (tùy chọn):`,
+        'Chủ sân hủy theo yêu cầu'
+      );
+      if (promptReason === null) return;
+      reason = promptReason.trim();
+    }
+
+    try {
+      const payload = await ownerRequest(`/bookings/${encodeURIComponent(bookingId)}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: newStatus, reason })
+      });
+      await refreshOperationalData(currentFacility?.id, selectedScheduleDate);
+      showToast(payload.message || `Đã cập nhật đơn [${bookingId}].`);
+      if (selectedBookingDetail?.id === bookingId) {
+        setSelectedBookingDetail(null);
+      }
+    } catch (error) {
+      showToast(`Cập nhật thất bại: ${error.message}`);
+    }
+  };
+
+  // Khóa / Mở khóa khung giờ trong bảng court_blocks
+  const openBlockModal = (preset = {}) => {
+    const slots = scheduleData.timeSlots || [];
+    const defaultSlot =
+      slots.find(s => Number(s.slotId) === Number(preset.slotId)) ||
+      slots[0];
+    setBlockForm({
+      subCourtId: preset.subCourtId ? String(preset.subCourtId) : '',
+      slotId: defaultSlot ? String(defaultSlot.slotId) : '',
+      date: preset.date || selectedScheduleDate,
+      reason: 'Bảo trì sân'
+    });
+    setBlockError('');
+    setShowBlockModal(true);
+  };
+
+  const handleCreateBlock = async (e) => {
+    e.preventDefault();
+    if (!currentFacility || blockSaving) return;
+    setBlockSaving(true);
+    setBlockError('');
+    try {
+      const payload = await ownerRequest('/blocks', {
+        method: 'POST',
+        body: JSON.stringify({
+          courtId: currentFacility.id,
+          subCourtId: blockForm.subCourtId ? Number(blockForm.subCourtId) : null,
+          slotId: Number(blockForm.slotId),
+          date: blockForm.date,
+          reason: blockForm.reason.trim()
+        })
+      });
+      await loadSchedule(currentFacility.id, selectedScheduleDate);
+      setShowBlockModal(false);
+      showToast(payload.message || 'Đã khóa khung giờ thành công!');
+    } catch (error) {
+      setBlockError(error.message);
+    } finally {
+      setBlockSaving(false);
+    }
+  };
+
+  const handleDeleteBlock = async (block) => {
+    if (!block) return;
+    if (!window.confirm(`Mở khóa khung giờ (${block.reason})?`)) return;
+    try {
+      const payload = await ownerRequest(`/blocks/${block.blockId}`, { method: 'DELETE' });
+      await loadSchedule(currentFacility?.id, selectedScheduleDate);
+      showToast(payload.message || 'Đã mở khóa khung giờ!');
+    } catch (error) {
+      showToast(`Mở khóa thất bại: ${error.message}`);
+    }
+  };
+
+  // Xuất file CSV sao kê doanh thu thật
+  const handleExportFinanceCsv = () => {
+    const validRows = bookings.filter(b => b.status !== 'CANCELLED');
+    if (validRows.length === 0) {
+      showToast('Chưa có giao dịch hợp lệ để xuất báo cáo.');
+      return;
+    }
+    const headers = ['Ma don', 'Ngay choi', 'Khung gio', 'San con', 'Khach hang', 'SDT', 'Thanh toan', 'Trang thai', 'So tien (VND)'];
+    const escapeCsv = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const lines = [
+      headers.map(escapeCsv).join(','),
+      ...validRows.map(b =>
+        [
+          b.id,
+          b.date,
+          b.timeSlot,
+          b.subCourtName,
+          b.customerName,
+          b.customerPhone,
+          b.paymentMethod,
+          b.status === 'COMPLETED' ? 'Hoan thanh / Check-in' : 'Da xac nhan',
+          b.totalPrice
+        ].map(escapeCsv).join(',')
+      )
+    ];
+    const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `doanh-thu-cum-san-${currentFacility?.id || 'owner'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`Đã xuất ${validRows.length} giao dịch ra file CSV.`);
+  };
+
   const activeCourtsCount = currentSubCourts.filter(c => c.status === 'ACTIVE').length;
-  const todayBookingsCount = scheduleBookings.length;
+  const activeTimeSlots = scheduleData.timeSlots || [];
+  const last7Days = analytics?.last7Days || [];
+  const max7DayRevenue = last7Days.reduce((m, d) => Math.max(m, d.revenue), 0);
+  const avg7DayRevenue = last7Days.length > 0
+    ? Math.round(last7Days.reduce((s, d) => s + d.revenue, 0) / last7Days.length)
+    : 0;
+
+  const getBookingBadge = (status) => {
+    if (status === 'COMPLETED') return { cls: 'bg-success', label: 'Đã Check-in' };
+    if (status === 'CANCELLED') return { cls: 'bg-danger', label: 'Đã hủy' };
+    return { cls: 'bg-primary', label: 'Đã xác nhận' };
+  };
 
   // Màn hình yêu cầu đăng nhập tài khoản OWNER nếu người dùng chưa đăng nhập đúng vai trò
   if (!isAuthorizedOwner) {
@@ -598,7 +811,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
               </span>
             </div>
 
-            {/* Facility Selector Dropdown (Multi-Vendor from PostgreSQL) */}
+            {/* Facility Selector Dropdown */}
             <div className="d-flex align-items-center gap-2 flex-grow-1 flex-md-grow-0 justify-content-center">
               <div className="input-group input-group-sm shadow-sm" style={{ maxWidth: '420px' }}>
                 <span className="input-group-text bg-light text-brand fw-bold border-end-0">
@@ -670,7 +883,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
         </div>
       </header>
 
-      {/* Nếu chủ sân chưa có cụm sân nào trong PostgreSQL */}
+      {/* Nếu chủ sân chưa có cụm sân nào */}
       {!facilitiesLoading && !facilitiesError && !currentFacility ? (
         <main className="flex-grow-1 d-flex align-items-center justify-content-center p-4">
           <div className="card border-0 shadow-sm rounded-4 p-5 text-center bg-white" style={{ maxWidth: '520px' }}>
@@ -697,7 +910,6 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
             <section className="bg-white border-bottom shadow-xs pt-3 pb-0">
               <div className="container-fluid px-3 px-lg-4">
                 <div className="row align-items-center mb-3 g-3">
-                  {/* Facility Info Card */}
                   <div className="col-lg-8">
                     <div className="d-flex align-items-start gap-3">
                       <img
@@ -734,13 +946,12 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                     </div>
                   </div>
 
-                  {/* Quick Button Group */}
                   <div className="col-lg-4 text-lg-end">
                     <div className="d-flex align-items-center justify-content-lg-end gap-2 flex-wrap">
                       <button
                         className="btn btn-outline-success btn-sm rounded-pill fw-semibold shadow-xs"
-                        onClick={() => setShowWalkInModal(true)}
-                        disabled={currentSubCourts.length === 0}
+                        onClick={() => openWalkInModal()}
+                        disabled={activeTimeSlots.length === 0}
                       >
                         <i className="bi bi-person-plus-fill me-1"></i> Đặt tại quầy
                       </button>
@@ -784,9 +995,9 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                     >
                       <i className="bi bi-calendar3"></i>
                       <span>Lịch Đặt & Khung Giờ</span>
-                      {todayBookingsCount > 0 && (
+                      {(analytics?.todayBookingsCount || todayBookings.length) > 0 && (
                         <span className="badge rounded-pill bg-danger" style={{ fontSize: '0.65rem' }}>
-                          {todayBookingsCount}
+                          {analytics?.todayBookingsCount ?? todayBookings.length}
                         </span>
                       )}
                     </button>
@@ -826,12 +1037,11 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                 </div>
               )}
 
+              {/* ==========================================
+                  TAB 1: TỔNG QUAN (REAL POSTGRESQL ANALYTICS)
+                  ========================================== */}
               {currentFacility && activeTab === 'overview' && (
                 <div>
-                  <div className="alert alert-warning small">
-                    Các số liệu doanh thu và lịch đặt bên dưới đang hiển thị dữ liệu demo; quản lý cụm sân, sân con và cài đặt cơ sở đã kết nối trực tiếp PostgreSQL.
-                  </div>
-
                   {/* 4 KPI Cards */}
                   <div className="row g-3 mb-4">
                     <div className="col-xl-3 col-sm-6">
@@ -843,25 +1053,27 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                           </div>
                         </div>
                         <h3 className="fw-bold text-brand-dark mb-1">
-                          {currentFacility.monthlyRevenue.toLocaleString('vi-VN')}đ
+                          {analyticsLoading ? '...' : `${Number(analytics?.monthlyRevenue || 0).toLocaleString('vi-VN')}đ`}
                         </h3>
-                        <div className="small text-muted">Thống kê đặt sân theo kỳ</div>
+                        <div className="small text-success">
+                          <strong>{analytics?.monthlyBookings || 0}</strong> đơn hợp lệ trong tháng
+                        </div>
                       </div>
                     </div>
 
                     <div className="col-xl-3 col-sm-6">
                       <div className="card border-0 shadow-sm rounded-3 h-100 p-3 bg-white">
                         <div className="d-flex align-items-center justify-content-between mb-2">
-                          <span className="text-muted small fw-semibold">LƯỢT ĐẶT SÂN</span>
+                          <span className="text-muted small fw-semibold">TỔNG LƯỢT ĐẶT SÂN</span>
                           <div className="bg-primary-subtle p-2 rounded-circle text-primary">
                             <i className="bi bi-calendar2-check-fill fs-5"></i>
                           </div>
                         </div>
                         <h3 className="fw-bold text-dark mb-1">
-                          {currentFacility.totalBookings} lượt
+                          {analytics?.totalBookings ?? bookings.filter(b => b.status !== 'CANCELLED').length} lượt
                         </h3>
                         <div className="small text-muted d-flex align-items-center gap-1">
-                          <span className="text-success fw-bold">+{todayBookingsCount} hôm nay</span> • {currentBookings.filter(b => b.status === 'CHECKED_IN').length} đã check-in
+                          <span className="text-success fw-bold">+{analytics?.todayBookingsCount ?? todayBookings.length} hôm nay</span> • {analytics?.checkedInCount ?? 0} đã check-in
                         </div>
                       </div>
                     </div>
@@ -869,15 +1081,17 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                     <div className="col-xl-3 col-sm-6">
                       <div className="card border-0 shadow-sm rounded-3 h-100 p-3 bg-white">
                         <div className="d-flex align-items-center justify-content-between mb-2">
-                          <span className="text-muted small fw-semibold">CÔNG SUẤT LẤP ĐẦY</span>
+                          <span className="text-muted small fw-semibold">CÔNG SUẤT NGÀY CHỌN</span>
                           <div className="bg-warning-subtle p-2 rounded-circle text-warning">
                             <i className="bi bi-speedometer2 fs-5"></i>
                           </div>
                         </div>
                         <h3 className="fw-bold text-dark mb-1">
-                          {currentFacility.occupancyRate}%
+                          {analytics?.occupancyRate ?? 0}%
                         </h3>
-                        <div className="small text-muted">Cụm: {currentFacility.name}</div>
+                        <div className="small text-muted">
+                          Đã đặt <strong>{analytics?.bookedTodaySlots ?? 0}</strong> / {analytics?.totalDailyCapacity ?? 0} slot ({selectedScheduleDate})
+                        </div>
                       </div>
                     </div>
 
@@ -903,65 +1117,94 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                     </div>
                   </div>
 
-                  {/* Chart & Quick Actions Section */}
+                  {/* Chart & Quick Actions */}
                   <div className="row g-4 mb-4">
                     <div className="col-lg-7">
                       <div className="card border-0 shadow-sm rounded-3 p-4 bg-white h-100">
                         <div className="d-flex align-items-center justify-content-between mb-3">
                           <div>
-                            <h6 className="fw-bold text-dark mb-0">Biểu đồ doanh thu 7 ngày gần đây</h6>
-                            <span className="text-muted small">Cụm: {currentFacility.name}</span>
+                            <h6 className="fw-bold text-dark mb-0">Biểu đồ doanh thu 7 ngày (PostgreSQL)</h6>
+                            <span className="text-muted small">Tính đến ngày: {selectedScheduleDate}</span>
                           </div>
-                          <span className="badge bg-light text-secondary border">Tuần hiện tại</span>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary"
+                            onClick={() => refreshOperationalData(currentFacility.id, selectedScheduleDate)}
+                          >
+                            <i className="bi bi-arrow-clockwise me-1"></i>Làm mới
+                          </button>
                         </div>
 
                         <div className="d-flex align-items-end justify-content-between pt-4 px-2" style={{ height: '220px' }}>
-                          {[
-                            { day: 'T2', amount: '2.1M', height: '40%' },
-                            { day: 'T3', amount: '3.4M', height: '60%' },
-                            { day: 'T4', amount: '2.8M', height: '52%' },
-                            { day: 'T5', amount: '4.2M', height: '75%' },
-                            { day: 'T6', amount: '5.8M', height: '90%' },
-                            { day: 'T7', amount: '7.2M', height: '100%', highlight: true },
-                            { day: 'CN', amount: '6.5M', height: '95%' }
-                          ].map((bar, i) => (
-                            <div key={i} className="d-flex flex-column align-items-center flex-grow-1">
-                              <span className="small fw-semibold text-muted mb-2" style={{ fontSize: '0.72rem' }}>{bar.amount}</span>
-                              <div
-                                className="w-50 rounded-top transition-all"
-                                style={{
-                                  height: bar.height,
-                                  backgroundColor: bar.highlight ? '#0b4d3c' : '#10b981',
-                                  boxShadow: bar.highlight ? '0 4px 10px rgba(11, 77, 60, 0.4)' : 'none'
-                                }}
-                              ></div>
-                              <span className={`small mt-2 ${bar.highlight ? 'fw-bold text-brand' : 'text-muted'}`}>{bar.day}</span>
-                            </div>
-                          ))}
+                          {last7Days.length === 0 ? (
+                            <div className="text-muted small w-100 text-center my-auto">Đang tải dữ liệu doanh thu...</div>
+                          ) : last7Days.map((bar) => {
+                            const heightPct = max7DayRevenue > 0
+                              ? Math.max(8, Math.round((bar.revenue / max7DayRevenue) * 100))
+                              : 8;
+                            const isPeak = max7DayRevenue > 0 && bar.revenue === max7DayRevenue;
+                            return (
+                              <div key={bar.date} className="d-flex flex-column align-items-center flex-grow-1" title={`${bar.date}: ${bar.revenue.toLocaleString('vi-VN')}đ (${bar.bookingsCount} đơn)`}>
+                                <span className="small fw-semibold text-muted mb-2" style={{ fontSize: '0.72rem' }}>
+                                  {formatCompactMoney(bar.revenue)}
+                                </span>
+                                <div
+                                  className="w-50 rounded-top transition-all"
+                                  style={{
+                                    height: `${heightPct}%`,
+                                    backgroundColor: isPeak ? '#0b4d3c' : (bar.revenue > 0 ? '#10b981' : '#e5e7eb'),
+                                    boxShadow: isPeak ? '0 4px 10px rgba(11, 77, 60, 0.35)' : 'none'
+                                  }}
+                                ></div>
+                                <span className={`small mt-2 ${isPeak ? 'fw-bold text-brand' : 'text-muted'}`}>{bar.label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="border-top mt-3 pt-3 d-flex align-items-center justify-content-between small text-muted flex-wrap gap-2">
+                          <div><i className="bi bi-circle-fill text-brand me-1"></i>Doanh thu hôm nay: <strong>{Number(analytics?.todayRevenue || 0).toLocaleString('vi-VN')}đ</strong></div>
+                          <div>Trung bình 7 ngày: <strong>{avg7DayRevenue.toLocaleString('vi-VN')}đ / ngày</strong></div>
                         </div>
                       </div>
                     </div>
 
                     <div className="col-lg-5">
                       <div className="card border-0 shadow-sm rounded-3 p-4 bg-white h-100 d-flex flex-column">
-                        <h6 className="fw-bold text-dark mb-3">Phân bổ sân theo bộ môn</h6>
+                        <h6 className="fw-bold text-dark mb-3">
+                          {analytics?.bySport?.length > 0 ? 'Phân bổ doanh thu theo bộ môn' : 'Phân bổ sân theo bộ môn'}
+                        </h6>
 
                         <div className="mb-4">
-                          {facilitySports.map((sport, idx) => {
-                            const count = currentSubCourts.filter(sc => sc.sportType === sport).length;
-                            const ratio = currentSubCourts.length > 0 ? Math.round((count / currentSubCourts.length) * 100) : 100;
-                            return (
+                          {analytics?.bySport?.length > 0 ? (
+                            analytics.bySport.map((item, idx) => (
                               <div key={idx} className="mb-3">
                                 <div className="d-flex justify-content-between small fw-semibold mb-1">
-                                  <span>{sport}</span>
-                                  <span className="text-brand">{count} sân ({ratio}%)</span>
+                                  <span>{item.sportName} ({item.bookingsCount} đơn)</span>
+                                  <span className="text-brand">{item.revenue.toLocaleString('vi-VN')}đ ({item.ratio}%)</span>
                                 </div>
                                 <div className="progress" style={{ height: '8px' }}>
-                                  <div className="progress-bar bg-success" role="progressbar" style={{ width: `${ratio}%` }}></div>
+                                  <div className="progress-bar bg-success" role="progressbar" style={{ width: `${item.ratio}%` }}></div>
                                 </div>
                               </div>
-                            );
-                          })}
+                            ))
+                          ) : (
+                            facilitySports.map((sport, idx) => {
+                              const count = currentSubCourts.filter(sc => sc.sportType === sport).length;
+                              const ratio = currentSubCourts.length > 0 ? Math.round((count / currentSubCourts.length) * 100) : 100;
+                              return (
+                                <div key={idx} className="mb-3">
+                                  <div className="d-flex justify-content-between small fw-semibold mb-1">
+                                    <span>{sport}</span>
+                                    <span className="text-brand">{count} sân ({ratio}%)</span>
+                                  </div>
+                                  <div className="progress" style={{ height: '8px' }}>
+                                    <div className="progress-bar bg-success" role="progressbar" style={{ width: `${ratio}%` }}></div>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
                         </div>
 
                         <div className="mt-auto border-top pt-3">
@@ -969,8 +1212,8 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                           <div className="d-grid gap-2">
                             <button
                               className="btn btn-outline-success text-start d-flex align-items-center justify-content-between py-2 px-3 rounded-3"
-                              onClick={() => setShowWalkInModal(true)}
-                              disabled={currentSubCourts.length === 0}
+                              onClick={() => openWalkInModal()}
+                              disabled={activeTimeSlots.length === 0}
                             >
                               <span><i className="bi bi-person-plus me-2"></i> Nhận khách vãng lai tại quầy</span>
                               <i className="bi bi-chevron-right small"></i>
@@ -987,9 +1230,9 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                             </button>
                             <button
                               className="btn btn-outline-secondary text-start d-flex align-items-center justify-content-between py-2 px-3 rounded-3"
-                              onClick={() => setActiveTab('settings')}
+                              onClick={() => setActiveTab('schedule')}
                             >
-                              <span><i className="bi bi-gear me-2"></i> Cập nhật cấu hình cơ sở & VietQR</span>
+                              <span><i className="bi bi-calendar-event me-2"></i> Xem ma trận lịch & khóa khung giờ</span>
                               <i className="bi bi-chevron-right small"></i>
                             </button>
                           </div>
@@ -998,12 +1241,12 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                     </div>
                   </div>
 
-                  {/* Today Bookings Preview */}
+                  {/* Bookings Today Table */}
                   <div className="card border-0 shadow-sm rounded-3 p-4 bg-white">
                     <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
                       <div>
-                        <h6 className="fw-bold text-dark mb-0">Lượt đặt sân sắp tới hôm nay ({currentFacility.name})</h6>
-                        <span className="text-muted small">Theo dõi nhanh các lượt đặt sân trong ngày</span>
+                        <h6 className="fw-bold text-dark mb-0">Lượt đặt sân hôm nay ({todayYmd})</h6>
+                        <span className="text-muted small">Đồng bộ trực tiếp đơn online từ khách hàng & đơn đặt tại quầy</span>
                       </div>
                       <button
                         className="btn btn-sm btn-link text-brand fw-semibold text-decoration-none"
@@ -1019,7 +1262,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                           <tr>
                             <th>MÃ ĐƠN</th>
                             <th>KHÁCH HÀNG</th>
-                            <th>SÂN CON & MÔN</th>
+                            <th>SÂN CON</th>
                             <th>KHUNG GIỜ</th>
                             <th>SỐ TIỀN</th>
                             <th>THANH TOÁN</th>
@@ -1028,57 +1271,63 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                           </tr>
                         </thead>
                         <tbody>
-                          {scheduleBookings.length === 0 ? (
+                          {bookingsLoading ? (
+                            <tr>
+                              <td colSpan="8" className="text-center py-4 text-muted">Đang tải danh sách đặt sân...</td>
+                            </tr>
+                          ) : todayBookings.length === 0 ? (
                             <tr>
                               <td colSpan="8" className="text-center py-4 text-muted">
-                                Hôm nay chưa có lịch đặt nào tại cơ sở này.
+                                Hôm nay chưa có lịch đặt nào tại cơ sở này. Hãy bấm "Đặt tại quầy" nếu có khách gọi điện!
                               </td>
                             </tr>
                           ) : (
-                            scheduleBookings.map((b) => (
-                              <tr key={b.id}>
-                                <td><span className="fw-bold text-dark">{b.id}</span></td>
-                                <td>
-                                  <div className="fw-semibold text-dark">{b.customerName}</div>
-                                  <span className="text-muted small">{b.customerPhone}</span>
-                                </td>
-                                <td><span className="badge bg-light text-dark border me-1">{b.subCourtName}</span></td>
-                                <td><span className="badge bg-success-subtle text-success fw-bold px-2 py-1">{b.timeSlot}</span></td>
-                                <td><strong className="text-brand-dark">{b.totalPrice?.toLocaleString('vi-VN')}đ</strong></td>
-                                <td><span className="small text-muted">{b.paymentMethod}</span></td>
-                                <td>
-                                  <span className={`badge rounded-pill ${
-                                    b.status === 'CONFIRMED' ? 'bg-primary' :
-                                    b.status === 'CHECKED_IN' ? 'bg-success' :
-                                    b.status === 'CANCELLED' ? 'bg-danger' : 'bg-warning text-dark'
-                                  }`}>
-                                    {b.status === 'CONFIRMED' ? 'Đã xác nhận' :
-                                     b.status === 'CHECKED_IN' ? 'Đã check-in' :
-                                     b.status === 'CANCELLED' ? 'Đã hủy' : 'Chờ xác nhận'}
-                                  </span>
-                                </td>
-                                <td className="text-end">
-                                  <div className="btn-group btn-group-sm">
-                                    {b.status !== 'CHECKED_IN' && b.status !== 'CANCELLED' && (
+                            todayBookings.map((b) => {
+                              const badge = getBookingBadge(b.status);
+                              return (
+                                <tr key={b.id}>
+                                  <td><span className="fw-bold text-dark">{b.id}</span></td>
+                                  <td>
+                                    <div className="fw-semibold text-dark">{b.customerName}</div>
+                                    <span className="text-muted small">{b.customerPhone}</span>
+                                  </td>
+                                  <td><span className="badge bg-light text-dark border me-1">{b.subCourtName}</span></td>
+                                  <td><span className="badge bg-success-subtle text-success fw-bold px-2 py-1">{b.timeSlot}</span></td>
+                                  <td><strong className="text-brand-dark">{b.totalPrice?.toLocaleString('vi-VN')}đ</strong></td>
+                                  <td><span className="small text-muted">{b.paymentMethod}</span></td>
+                                  <td><span className={`badge rounded-pill ${badge.cls}`}>{badge.label}</span></td>
+                                  <td className="text-end">
+                                    <div className="btn-group btn-group-sm">
+                                      {b.status === 'CONFIRMED' && (
+                                        <button
+                                          className="btn btn-outline-success"
+                                          title="Check-in khi khách tới sân"
+                                          onClick={() => handleUpdateBookingStatus(b.id, 'COMPLETED')}
+                                        >
+                                          <i className="bi bi-check-lg me-1"></i> Check-in
+                                        </button>
+                                      )}
                                       <button
-                                        className="btn btn-outline-success"
-                                        title="Check-in khi khách tới sân"
-                                        onClick={() => handleUpdateBookingStatus(b.id, 'CHECKED_IN')}
+                                        className="btn btn-outline-secondary"
+                                        onClick={() => setSelectedBookingDetail(b)}
+                                        title="Xem chi tiết đơn"
                                       >
-                                        <i className="bi bi-check-lg me-1"></i> Check-in
+                                        <i className="bi bi-eye"></i>
                                       </button>
-                                    )}
-                                    <button
-                                      className="btn btn-outline-secondary"
-                                      onClick={() => setSelectedBookingDetail(b)}
-                                      title="Xem chi tiết đơn"
-                                    >
-                                      <i className="bi bi-eye"></i>
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))
+                                      {b.status === 'CONFIRMED' && (
+                                        <button
+                                          className="btn btn-outline-danger"
+                                          title="Hủy đơn đặt"
+                                          onClick={() => handleUpdateBookingStatus(b.id, 'CANCELLED')}
+                                        >
+                                          <i className="bi bi-x-lg"></i>
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
                           )}
                         </tbody>
                       </table>
@@ -1157,7 +1406,6 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                       filteredSubCourts.map((court) => (
                         <div key={court.id} className="col-lg-4 col-md-6">
                           <div className="card h-100 border-0 shadow-sm rounded-3 overflow-hidden bg-white">
-                            {/* Court Image & Status Badge */}
                             <div className="position-relative" style={{ height: '170px' }}>
                               <img
                                 src={court.imageUrl}
@@ -1183,7 +1431,6 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                               </div>
                             </div>
 
-                            {/* Court Body */}
                             <div className="card-body p-3 d-flex flex-column">
                               <h6 className="fw-bold text-dark mb-1">{court.name}</h6>
                               <div className="small text-muted mb-2">
@@ -1193,7 +1440,6 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                                 <i className="bi bi-shield-check me-1 text-success"></i> {court.surfaceType || 'Mặt sân chuẩn thi đấu'}
                               </div>
 
-                              {/* Pricing box */}
                               <div className="bg-light p-2 rounded-2 mb-3">
                                 <div className="d-flex justify-content-between small">
                                   <span className="text-muted">Giờ thường:</span>
@@ -1205,7 +1451,6 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                                 </div>
                               </div>
 
-                              {/* Amenities chips */}
                               <div className="d-flex flex-wrap gap-1 mb-3">
                                 {court.amenities && court.amenities.map((a, i) => (
                                   <span key={i} className="badge bg-light text-secondary border fw-normal" style={{ fontSize: '0.7rem' }}>
@@ -1214,7 +1459,6 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                                 ))}
                               </div>
 
-                              {/* Action footer */}
                               <div className="mt-auto pt-2 border-top d-flex align-items-center justify-content-between">
                                 <button
                                   type="button"
@@ -1244,7 +1488,6 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                                   </button>
                                 </div>
                               </div>
-
                             </div>
                           </div>
                         </div>
@@ -1255,13 +1498,13 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
               )}
 
               {/* ==========================================
-                  TAB 3: LỊCH ĐẶT & BẢNG KHUNG GIỜ (SCHEDULE MATRIX)
+                  TAB 3: LỊCH ĐẶT & BẢNG KHUNG GIỜ (REAL POSTGRESQL MATRIX & BLOCKS)
                   ========================================== */}
               {currentFacility && activeTab === 'schedule' && (
                 <div>
                   <div className="card border-0 shadow-sm rounded-3 p-3 bg-white mb-4">
                     <div className="row align-items-center g-3">
-                      <div className="col-md-5">
+                      <div className="col-md-4">
                         <label className="form-label small text-muted fw-semibold mb-1">
                           <i className="bi bi-calendar-date me-1"></i> Chọn ngày xem lịch:
                         </label>
@@ -1275,7 +1518,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                           <button
                             type="button"
                             className="btn btn-outline-secondary btn-sm text-nowrap"
-                            onClick={() => setSelectedScheduleDate(new Date().toISOString().split('T')[0])}
+                            onClick={() => setSelectedScheduleDate(formatLocalYMD())}
                           >
                             Hôm nay
                           </button>
@@ -1283,8 +1526,8 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                       </div>
 
                       <div className="col-md-4">
-                        <div className="small text-muted mb-1">Trạng thái khung giờ:</div>
-                        <div className="d-flex align-items-center gap-3 small">
+                        <div className="small text-muted mb-1">Chú thích trạng thái:</div>
+                        <div className="d-flex align-items-center gap-3 small flex-wrap">
                           <span className="d-flex align-items-center gap-1">
                             <span className="d-inline-block rounded bg-success-subtle border border-success" style={{ width: '14px', height: '14px' }}></span>
                             <span>Trống</span>
@@ -1294,17 +1537,28 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                             <span>Đã đặt</span>
                           </span>
                           <span className="d-flex align-items-center gap-1">
+                            <span className="d-inline-block rounded bg-danger-subtle border border-danger" style={{ width: '14px', height: '14px' }}></span>
+                            <span>Đã khóa</span>
+                          </span>
+                          <span className="d-flex align-items-center gap-1">
                             <span className="d-inline-block rounded bg-secondary-subtle border" style={{ width: '14px', height: '14px' }}></span>
                             <span>Bảo trì</span>
                           </span>
                         </div>
                       </div>
 
-                      <div className="col-md-3 text-md-end">
+                      <div className="col-md-4 text-md-end d-flex justify-content-md-end gap-2 flex-wrap">
+                        <button
+                          className="btn btn-outline-danger btn-sm rounded-pill shadow-xs"
+                          onClick={() => openBlockModal()}
+                          disabled={activeTimeSlots.length === 0}
+                        >
+                          <i className="bi bi-lock-fill me-1"></i> Khóa khung giờ
+                        </button>
                         <button
                           className="btn btn-brand btn-sm rounded-pill shadow-xs"
-                          onClick={() => setShowWalkInModal(true)}
-                          disabled={currentSubCourts.length === 0}
+                          onClick={() => openWalkInModal()}
+                          disabled={activeTimeSlots.length === 0}
                         >
                           <i className="bi bi-plus-lg me-1"></i> Đặt tại quầy
                         </button>
@@ -1314,22 +1568,25 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
 
                   {/* Time-Slot Grid Matrix */}
                   <div className="card border-0 shadow-sm rounded-3 bg-white mb-4 overflow-hidden">
-                    <div className="card-header bg-light py-3 border-0">
-                      <h6 className="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
-                        <i className="bi bi-grid-3x3-gap-fill text-brand"></i>
-                        <span>Ma trận khung giờ: {currentFacility.name} (Ngày: {selectedScheduleDate})</span>
-                      </h6>
-                      <span className="text-muted small">Nhấp vào ô TRỐNG để đặt sân nhanh cho khách vãng lai gọi điện</span>
+                    <div className="card-header bg-light py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                      <div>
+                        <h6 className="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+                          <i className="bi bi-grid-3x3-gap-fill text-brand"></i>
+                          <span>Ma trận khung giờ: {currentFacility.name} (Ngày: {selectedScheduleDate})</span>
+                        </h6>
+                        <span className="text-muted small">Bấm "+ Đặt" để nhận khách tại quầy hoặc bấm biểu tượng ổ khóa để khóa/mở khung giờ</span>
+                      </div>
+                      {scheduleLoading && <span className="badge bg-info-subtle text-info">Đang đồng bộ lịch...</span>}
                     </div>
 
                     <div className="table-responsive p-3">
-                      <table className="table table-bordered text-center align-middle mb-0" style={{ minWidth: '700px' }}>
+                      <table className="table table-bordered text-center align-middle mb-0" style={{ minWidth: '720px' }}>
                         <thead className="table-light">
                           <tr>
-                            <th style={{ width: '140px' }} className="text-secondary small">KHUNG GIỜ</th>
+                            <th style={{ width: '145px' }} className="text-secondary small">KHUNG GIỜ</th>
                             {currentSubCourts.map(court => (
                               <th key={court.id} className="small">
-                                <div className="fw-bold text-dark text-truncate" style={{ maxWidth: '160px' }}>{court.name}</div>
+                                <div className="fw-bold text-dark text-truncate" style={{ maxWidth: '170px' }}>{court.name}</div>
                                 <span className="badge bg-light text-secondary border fw-normal" style={{ fontSize: '0.65rem' }}>
                                   {court.sportType}
                                 </span>
@@ -1338,72 +1595,220 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                           </tr>
                         </thead>
                         <tbody>
-                          {currentSubCourts.length === 0 ? (
+                          {currentSubCourts.length === 0 || activeTimeSlots.length === 0 ? (
                             <tr>
-                              <td colSpan="2" className="text-muted py-4">Chưa có sân con nào trong cụm sân này.</td>
-                            </tr>
-                          ) : timeSlotsList.map((slot) => (
-                            <tr key={slot}>
-                              <td className="fw-semibold text-secondary small bg-light text-nowrap">
-                                <i className="bi bi-clock me-1 text-muted"></i>{slot}
+                              <td colSpan={Math.max(2, currentSubCourts.length + 1)} className="text-muted py-4">
+                                {currentSubCourts.length === 0
+                                  ? 'Chưa có sân con nào trong cụm sân này. Hãy thêm sân con ở tab Quản lý Sân.'
+                                  : 'Cụm sân chưa có khung giờ hoạt động nào.'}
                               </td>
-                              {currentSubCourts.map(court => {
-                                const bookingMatch = scheduleBookings.find(b =>
-                                  b.subCourtId === court.id &&
-                                  b.timeSlot === slot &&
-                                  b.status !== 'CANCELLED'
-                                );
+                            </tr>
+                          ) : activeTimeSlots.map((slot) => {
+                            const slotStartStr = `${selectedScheduleDate} ${slot.startFull}`;
+                            const slotEndStr = `${selectedScheduleDate} ${slot.endFull}`;
 
-                                if (court.status !== 'ACTIVE') {
-                                  return (
-                                    <td key={court.id} className="bg-secondary-subtle text-muted small p-2" title="Sân không hoạt động">
-                                      <span className="small text-secondary">{court.status === 'CLOSED' ? 'Đã đóng' : 'Bảo trì'}</span>
-                                    </td>
+                            return (
+                              <tr key={slot.slotId}>
+                                <td className="fw-semibold text-secondary small bg-light text-nowrap">
+                                  <i className="bi bi-clock me-1 text-muted"></i>{slot.label} {slot.isPeak ? '⭐' : ''}
+                                </td>
+                                {currentSubCourts.map(court => {
+                                  if (court.status !== 'ACTIVE') {
+                                    return (
+                                      <td key={court.id} className="bg-secondary-subtle text-muted small p-2" title="Sân không hoạt động">
+                                        <span className="small text-secondary">{court.status === 'CLOSED' ? 'Đã đóng' : 'Bảo trì'}</span>
+                                      </td>
+                                    );
+                                  }
+
+                                  const bookingMatch = (scheduleData.bookings || []).find(b =>
+                                    Number(b.slotId) === Number(slot.slotId) &&
+                                    (b.subCourtId === null || Number(b.subCourtId) === Number(court.id))
                                   );
-                                }
 
-                                if (bookingMatch) {
-                                  return (
-                                    <td
-                                      key={court.id}
-                                      className="p-1"
-                                      onClick={() => setSelectedBookingDetail(bookingMatch)}
-                                      title={`Bấm để xem chi tiết đơn: ${bookingMatch.customerName}`}
-                                      style={{ cursor: 'pointer' }}
-                                    >
-                                      <div className="p-2 rounded bg-primary text-white shadow-xs text-start">
-                                        <div className="fw-bold small text-truncate">{bookingMatch.customerName}</div>
-                                        <div style={{ fontSize: '0.68rem', opacity: 0.9 }}>
-                                          {bookingMatch.status === 'CHECKED_IN' ? '✅ Đã Check-in' : '🔵 Đã xác nhận'}
+                                  if (bookingMatch) {
+                                    const isDone = bookingMatch.status === 'COMPLETED';
+                                    return (
+                                      <td
+                                        key={court.id}
+                                        className="p-1"
+                                        onClick={() => setSelectedBookingDetail(bookingMatch)}
+                                        title={`Bấm để xem chi tiết đơn: ${bookingMatch.customerName}`}
+                                        style={{ cursor: 'pointer' }}
+                                      >
+                                        <div className={`p-2 rounded text-white shadow-xs text-start ${isDone ? 'bg-success' : 'bg-primary'}`}>
+                                          <div className="fw-bold small text-truncate">{bookingMatch.customerName}</div>
+                                          <div style={{ fontSize: '0.68rem', opacity: 0.9 }}>
+                                            {isDone ? '✅ Đã Check-in' : '🔵 Đã xác nhận'}
+                                          </div>
                                         </div>
+                                      </td>
+                                    );
+                                  }
+
+                                  const blockMatch = (scheduleData.blocks || []).find(bl =>
+                                    (bl.subCourtId === null || Number(bl.subCourtId) === Number(court.id)) &&
+                                    bl.startAt < slotEndStr &&
+                                    bl.endAt > slotStartStr
+                                  );
+
+                                  if (blockMatch) {
+                                    return (
+                                      <td key={court.id} className="p-1 bg-danger-subtle">
+                                        <div className="d-flex align-items-center justify-content-between gap-1 px-2 py-1 rounded border border-danger-subtle bg-white">
+                                          <span className="text-danger fw-semibold text-truncate" style={{ fontSize: '0.72rem', maxWidth: '110px' }} title={blockMatch.reason}>
+                                            🔒 {blockMatch.reason}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            className="btn btn-link p-0 text-danger small text-decoration-none"
+                                            style={{ fontSize: '0.72rem' }}
+                                            onClick={() => handleDeleteBlock(blockMatch)}
+                                            title="Mở khóa khung giờ này"
+                                          >
+                                            Mở
+                                          </button>
+                                        </div>
+                                      </td>
+                                    );
+                                  }
+
+                                  return (
+                                    <td key={court.id} className="p-1">
+                                      <div className="d-flex gap-1">
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm btn-outline-success flex-grow-1 py-1 small"
+                                          onClick={() => openWalkInModal({
+                                            subCourtId: court.id,
+                                            slotId: slot.slotId,
+                                            date: selectedScheduleDate,
+                                            price: slot.isPeak ? court.pricePeak : court.priceNormal
+                                          })}
+                                          title="Đặt tại quầy cho khung giờ này"
+                                        >
+                                          + Đặt
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm btn-outline-secondary py-1 px-2"
+                                          onClick={() => openBlockModal({
+                                            subCourtId: court.id,
+                                            slotId: slot.slotId,
+                                            date: selectedScheduleDate
+                                          })}
+                                          title="Khóa khung giờ này"
+                                        >
+                                          <i className="bi bi-lock"></i>
+                                        </button>
                                       </div>
                                     </td>
                                   );
-                                }
+                                })}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
 
-                                return (
-                                  <td key={court.id} className="p-1">
-                                    <button
-                                      type="button"
-                                      className="btn btn-sm btn-outline-success w-100 h-100 py-2 border-dashed small"
-                                      onClick={() => {
-                                        setSelectedSlotForWalkIn({
-                                          subCourtId: court.id,
-                                          subCourtName: court.name,
-                                          timeSlot: slot,
-                                          price: court.pricePeak
-                                        });
-                                        setShowWalkInModal(true);
-                                      }}
-                                      title="Bấm để nhận khách đặt khung giờ này"
-                                    >
-                                      <i className="bi bi-plus-circle me-1"></i>Trống
-                                    </button>
-                                  </td>
-                                );
-                              })}
+                  {/* Full Bookings List Table */}
+                  <div className="card border-0 shadow-sm rounded-3 p-4 bg-white">
+                    <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                      <h6 className="fw-bold text-dark mb-0">
+                        Toàn bộ đơn đặt sân tại {currentFacility.name} ({filteredBookingsList.length})
+                      </h6>
+                      <div className="btn-group btn-group-sm">
+                        {[
+                          { key: 'ALL', label: 'Tất cả' },
+                          { key: 'CONFIRMED', label: 'Đã xác nhận' },
+                          { key: 'COMPLETED', label: 'Đã Check-in' },
+                          { key: 'CANCELLED', label: 'Đã hủy' }
+                        ].map(tab => (
+                          <button
+                            key={tab.key}
+                            type="button"
+                            className={`btn ${bookingStatusFilter === tab.key ? 'btn-brand' : 'btn-outline-secondary'}`}
+                            onClick={() => setBookingStatusFilter(tab.key)}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {bookingsError && <div className="alert alert-danger py-2 small">{bookingsError}</div>}
+
+                    <div className="table-responsive">
+                      <table className="table table-hover align-middle mb-0">
+                        <thead className="table-light small text-muted">
+                          <tr>
+                            <th>MÃ ĐƠN</th>
+                            <th>NGÀY ĐẶT</th>
+                            <th>KHÁCH HÀNG</th>
+                            <th>SÂN CON</th>
+                            <th>KHUNG GIỜ</th>
+                            <th>TỔNG TIỀN</th>
+                            <th>HÌNH THỨC</th>
+                            <th>TRẠNG THÁI</th>
+                            <th className="text-end">HÀNH ĐỘNG</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredBookingsList.length === 0 ? (
+                            <tr>
+                              <td colSpan="9" className="text-center py-4 text-muted">
+                                Chưa có đơn đặt sân nào phù hợp bộ lọc.
+                              </td>
                             </tr>
-                          ))}
+                          ) : filteredBookingsList.map(b => {
+                            const badge = getBookingBadge(b.status);
+                            return (
+                              <tr key={b.id}>
+                                <td className="fw-bold text-dark">{b.id}</td>
+                                <td className="small text-muted">{b.date}</td>
+                                <td>
+                                  <div className="fw-semibold text-dark">{b.customerName}</div>
+                                  <span className="small text-muted">{b.customerPhone}</span>
+                                </td>
+                                <td className="small">{b.subCourtName}</td>
+                                <td><span className="badge bg-light text-dark border">{b.timeSlot}</span></td>
+                                <td><strong className="text-brand-dark">{b.totalPrice?.toLocaleString('vi-VN')}đ</strong></td>
+                                <td className="small text-muted">{b.paymentMethod}</td>
+                                <td><span className={`badge rounded-pill ${badge.cls}`}>{badge.label}</span></td>
+                                <td className="text-end">
+                                  <div className="btn-group btn-group-sm">
+                                    {b.status === 'CONFIRMED' && (
+                                      <button
+                                        className="btn btn-outline-success"
+                                        onClick={() => handleUpdateBookingStatus(b.id, 'COMPLETED')}
+                                        title="Check-in khách vào sân"
+                                      >
+                                        <i className="bi bi-check2"></i>
+                                      </button>
+                                    )}
+                                    <button
+                                      className="btn btn-outline-secondary"
+                                      onClick={() => setSelectedBookingDetail(b)}
+                                      title="Xem chi tiết"
+                                    >
+                                      <i className="bi bi-eye"></i>
+                                    </button>
+                                    {b.status === 'CONFIRMED' && (
+                                      <button
+                                        className="btn btn-outline-danger"
+                                        onClick={() => handleUpdateBookingStatus(b.id, 'CANCELLED')}
+                                        title="Hủy đơn đặt"
+                                      >
+                                        <i className="bi bi-x-lg"></i>
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -1412,7 +1817,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
               )}
 
               {/* ==========================================
-                  TAB 4: DOANH THU & ĐỐI SOÁT (FINANCE)
+                  TAB 4: DOANH THU & ĐỐI SOÁT (REAL POSTGRESQL DATA)
                   ========================================== */}
               {currentFacility && activeTab === 'finance' && (
                 <div>
@@ -1421,42 +1826,94 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                       <div className="card border-0 shadow-sm rounded-3 p-4 bg-white h-100">
                         <span className="text-muted small fw-semibold">TỔNG THU THÁNG HIỆN TẠI</span>
                         <h2 className="fw-bold text-brand-dark mt-2 mb-1">
-                          {currentFacility.monthlyRevenue.toLocaleString('vi-VN')}đ
+                          {Number(analytics?.monthlyRevenue || 0).toLocaleString('vi-VN')}đ
                         </h2>
-                        <p className="text-muted small mb-4">Tài khoản thụ hưởng: {currentFacility.bankName || 'Chưa cấu hình'}</p>
+                        <p className="text-muted small mb-4">
+                          Ghi nhận từ {analytics?.monthlyBookings || 0} lượt đặt sân hợp lệ trong PostgreSQL
+                        </p>
 
-                        <button
-                          className="btn btn-brand w-100 mt-auto py-2 rounded-3 shadow-sm"
-                          onClick={() => showToast(`Đã ghi nhận yêu cầu đối soát về ${currentFacility.bankName || 'Ngân hàng'} (${currentFacility.bankAccountNo || 'Chưa cập nhật STK'}).`)}
-                        >
-                          <i className="bi bi-wallet2 me-2"></i> Yêu Cầu Rút Tiền Về Ngân Hàng
-                        </button>
+                        <div className="border-top pt-3">
+                          <div className="d-flex justify-content-between mb-2 small">
+                            <span className="text-muted">Thanh toán Online / VietQR:</span>
+                            <strong className="text-success">
+                              {Number(analytics?.monthlyOnlineRevenue || 0).toLocaleString('vi-VN')}đ
+                            </strong>
+                          </div>
+                          <div className="d-flex justify-content-between mb-2 small">
+                            <span className="text-muted">Tiền mặt thu tại quầy:</span>
+                            <strong className="text-primary">
+                              {Number(analytics?.monthlyCounterRevenue || 0).toLocaleString('vi-VN')}đ
+                            </strong>
+                          </div>
+                          <div className="d-flex justify-content-between pt-2 border-top small">
+                            <span className="text-muted">Phí nền tảng dự kiến (5% đơn online):</span>
+                            <span className="text-danger">
+                              -{Number(analytics?.platformFeeEstimate || 0).toLocaleString('vi-VN')}đ
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="mt-auto pt-3 small text-muted">
+                          <i className="bi bi-bank me-1"></i>
+                          Tài khoản đối soát: <strong>{currentFacility.bankName || 'Chưa cấu hình'}</strong>{' '}
+                          {currentFacility.bankAccountNo ? `(${currentFacility.bankAccountNo})` : ''}
+                        </div>
                       </div>
                     </div>
 
                     <div className="col-lg-8">
                       <div className="card border-0 shadow-sm rounded-3 p-4 bg-white h-100">
-                        <div className="d-flex align-items-center justify-content-between mb-3">
-                          <h6 className="fw-bold text-dark mb-0">Lịch sử các kỳ đối soát & Chuyển khoản định kỳ</h6>
+                        <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+                          <h6 className="fw-bold text-dark mb-0">Chi tiết giao dịch phát sinh tại cơ sở</h6>
+                          <button
+                            type="button"
+                            className="btn btn-outline-success btn-sm"
+                            onClick={handleExportFinanceCsv}
+                          >
+                            <i className="bi bi-file-earmark-spreadsheet me-1"></i> Xuất báo cáo CSV
+                          </button>
                         </div>
 
                         <div className="table-responsive">
                           <table className="table table-hover align-middle mb-0">
                             <thead className="table-light small text-muted">
                               <tr>
-                                <th>MÃ KỲ ĐỐI SOÁT</th>
-                                <th>KHOẢNG THỜI GIAN</th>
-                                <th>TÀI KHOẢN NGÂN HÀNG</th>
+                                <th>MÃ ĐƠN</th>
+                                <th>NGÀY CHƠI</th>
+                                <th>SÂN CON & GIỜ</th>
+                                <th>HÌNH THỨC</th>
                                 <th>TRẠNG THÁI</th>
+                                <th className="text-end">SỐ TIỀN</th>
                               </tr>
                             </thead>
                             <tbody>
-                              <tr>
-                                <td className="fw-bold">DS-2026-W44</td>
-                                <td className="small text-muted">27/10 - 02/11/2026</td>
-                                <td className="small">{currentFacility.bankName || '—'} {currentFacility.bankAccountNo ? `••••${currentFacility.bankAccountNo.slice(-4)}` : ''}</td>
-                                <td><span className="badge bg-success">Đã giải ngân</span></td>
-                              </tr>
+                              {bookings.filter(b => b.status !== 'CANCELLED').length === 0 ? (
+                                <tr>
+                                  <td colSpan="6" className="text-center py-4 text-muted">
+                                    Chưa có giao dịch đặt sân nào.
+                                  </td>
+                                </tr>
+                              ) : (
+                                bookings.filter(b => b.status !== 'CANCELLED').slice(0, 15).map(b => (
+                                  <tr key={b.id}>
+                                    <td className="fw-bold">{b.id}</td>
+                                    <td className="small text-muted">{b.date}</td>
+                                    <td className="small">
+                                      <div>{b.subCourtName}</div>
+                                      <span className="text-muted">{b.timeSlot}</span>
+                                    </td>
+                                    <td className="small">{b.paymentMethod}</td>
+                                    <td>
+                                      <span className={`badge ${b.status === 'COMPLETED' ? 'bg-success' : 'bg-primary'}`}>
+                                        {b.status === 'COMPLETED' ? 'Đã Check-in' : 'Đã xác nhận'}
+                                      </span>
+                                    </td>
+                                    <td className="text-end fw-bold text-brand-dark">
+                                      {Number(b.totalPrice || 0).toLocaleString('vi-VN')}đ
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
                             </tbody>
                           </table>
                         </div>
@@ -1521,12 +1978,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
 
                           <div className="col-md-6">
                             <label className="form-label small fw-semibold">Email Tài Khoản</label>
-                            <input
-                              type="email"
-                              className="form-control bg-light"
-                              value={settingsForm.ownerEmail}
-                              readOnly
-                            />
+                            <input type="email" className="form-control bg-light" value={settingsForm.ownerEmail} readOnly />
                           </div>
                           <div className="col-md-6">
                             <label className="form-label small fw-semibold">Trạng Thái Vận Hành</label>
@@ -1670,7 +2122,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
       )}
 
       {/* ========================================================
-          MODAL 1: THÊM / SỬA SÂN CON (SUB-COURT MODAL)
+          MODAL 1: THÊM / SỬA SÂN CON
           ======================================================== */}
       {showAddCourtModal && (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
@@ -1680,11 +2132,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                 <h5 className="modal-title fw-bold">
                   {editingCourt ? 'Chỉnh Sửa Thông Tin Sân' : 'Thêm Sân Con Mới Vào Cụm Sân'}
                 </h5>
-                <button
-                  type="button"
-                  className="btn-close btn-close-white"
-                  onClick={() => setShowAddCourtModal(false)}
-                ></button>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setShowAddCourtModal(false)}></button>
               </div>
 
               <form onSubmit={handleSaveCourt}>
@@ -1710,9 +2158,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                         defaultValue={editingCourt ? editingCourt.sportTypeId : (currentFacility?.sportTypeId || sportTypes[0]?.sport_type_id || '')}
                       >
                         {sportTypes.map(st => (
-                          <option key={st.sport_type_id} value={st.sport_type_id}>
-                            {st.name}
-                          </option>
+                          <option key={st.sport_type_id} value={st.sport_type_id}>{st.name}</option>
                         ))}
                       </select>
                     </div>
@@ -1724,7 +2170,6 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                         name="courtType"
                         className="form-control"
                         defaultValue={editingCourt ? editingCourt.courtType : 'Ngoài trời có mái che'}
-                        placeholder="Ví dụ: Kính cường lực Panoramic, Có mái che, Trong nhà..."
                       />
                     </div>
 
@@ -1735,7 +2180,6 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                         name="surfaceType"
                         className="form-control"
                         defaultValue={editingCourt ? editingCourt.surfaceType : 'Cỏ nhân tạo chuẩn quốc tế'}
-                        placeholder="Ví dụ: Thảm Yonex, Cỏ FIFA, Sàn Acrylic..."
                       />
                     </div>
 
@@ -1746,7 +2190,6 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                         name="amenitiesText"
                         className="form-control"
                         defaultValue={editingCourt ? (editingCourt.amenities || []).join(', ') : 'Đèn LED 400W, Nước uống, Bãi đỗ xe'}
-                        placeholder="Ví dụ: Đèn LED 400W, Mái che 100%, Phòng thay đồ"
                       />
                     </div>
 
@@ -1798,13 +2241,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                         </div>
                         <div className="col-md-6 d-flex align-items-end">
                           <div className="form-check mb-2">
-                            <input
-                              type="checkbox"
-                              name="isVisible"
-                              id="subCourtVisible"
-                              className="form-check-input"
-                              defaultChecked={editingCourt.isVisible}
-                            />
+                            <input type="checkbox" name="isVisible" id="subCourtVisible" className="form-check-input" defaultChecked={editingCourt.isVisible} />
                             <label htmlFor="subCourtVisible" className="form-check-label small fw-semibold">
                               Hiển thị sân cho khách đặt
                             </label>
@@ -1816,13 +2253,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                 </div>
 
                 <div className="modal-footer bg-light">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setShowAddCourtModal(false)}
-                  >
-                    Hủy
-                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowAddCourtModal(false)}>Hủy</button>
                   <button type="submit" disabled={courtSaving} className="btn btn-brand px-4">
                     {courtSaving ? 'Đang lưu...' : (editingCourt ? 'Cập Nhật' : 'Lưu Sân Mới')}
                   </button>
@@ -1834,7 +2265,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
       )}
 
       {/* ========================================================
-          MODAL 2: ĐẶT SÂN TẠI QUẦY (WALK-IN BOOKING)
+          MODAL 2: ĐẶT SÂN TẠI QUẦY (WALK-IN -> POSTGRESQL)
           ======================================================== */}
       {showWalkInModal && currentFacility && (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
@@ -1845,61 +2276,29 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                   <i className="bi bi-person-plus-fill me-2"></i>
                   Tạo Lịch Đặt Tại Quầy / Khách Gọi Điện
                 </h5>
-                <button
-                  type="button"
-                  className="btn-close btn-close-white"
-                  onClick={() => {
-                    setShowWalkInModal(false);
-                    setSelectedSlotForWalkIn(null);
-                  }}
-                ></button>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setShowWalkInModal(false)}></button>
               </div>
 
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                const formData = new FormData(e.target);
-                const subCourtId = parseInt(formData.get('subCourtId'), 10);
-                const courtObj = currentSubCourts.find(c => c.id === subCourtId) || currentSubCourts[0];
-                const customerName = formData.get('customerName');
-                const customerPhone = formData.get('customerPhone');
-                const timeSlot = formData.get('timeSlot');
-                const date = formData.get('date');
-                const paymentMethod = formData.get('paymentMethod');
-                const totalPrice = parseInt(formData.get('price'), 10) || 280000;
-
-                const newBooking = {
-                  id: `BK-W${Date.now().toString().slice(-4)}`,
-                  facilityId: currentFacility.id,
-                  subCourtId,
-                  subCourtName: courtObj?.name || 'Sân thi đấu',
-                  customerName,
-                  customerPhone,
-                  date,
-                  timeSlot,
-                  totalPrice,
-                  paymentMethod,
-                  paymentStatus: paymentMethod === 'Tiền mặt tại quầy' ? 'PAID' : 'PENDING_AT_COUNTER',
-                  status: 'CHECKED_IN',
-                  note: 'Khách đặt trực tiếp tại quầy / qua điện thoại'
-                };
-
-                setBookings(prev => [newBooking, ...prev]);
-                showToast(`Đã nhận khách ${customerName} tại ${courtObj?.name || 'sân'} khung giờ ${timeSlot}!`);
-                setShowWalkInModal(false);
-                setSelectedSlotForWalkIn(null);
-              }}>
+              <form onSubmit={handleCreateWalkIn}>
                 <div className="modal-body p-4">
+                  {walkInError && (
+                    <div className="alert alert-danger py-2 small mb-3">
+                      <i className="bi bi-exclamation-triangle-fill me-1"></i>
+                      {walkInError}
+                    </div>
+                  )}
                   <div className="row g-3">
                     <div className="col-12">
                       <label className="form-label small fw-semibold">Chọn Sân Con (*)</label>
                       <select
-                        name="subCourtId"
                         className="form-select"
-                        defaultValue={selectedSlotForWalkIn ? selectedSlotForWalkIn.subCourtId : (currentSubCourts[0]?.id || '')}
+                        value={walkInForm.subCourtId}
+                        onChange={(e) => handleWalkInSubOrSlotChange(e.target.value, walkInForm.slotId)}
                       >
+                        {currentSubCourts.length === 0 && <option value="">Sân tiêu chuẩn</option>}
                         {currentSubCourts.map(c => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} ({c.sportType})
+                          <option key={c.id} value={c.id} disabled={c.status !== 'ACTIVE'}>
+                            {c.name} ({c.sportType}){c.status !== 'ACTIVE' ? ` - [${c.status}]` : ''}
                           </option>
                         ))}
                       </select>
@@ -1907,28 +2306,51 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
 
                     <div className="col-md-6">
                       <label className="form-label small fw-semibold">Tên Khách Hàng (*)</label>
-                      <input type="text" name="customerName" className="form-control" required placeholder="Nguyễn Văn A" />
+                      <input
+                        type="text"
+                        className="form-control"
+                        required
+                        placeholder="Nguyễn Văn A"
+                        value={walkInForm.customerName}
+                        onChange={(e) => setWalkInForm(prev => ({ ...prev, customerName: e.target.value }))}
+                      />
                     </div>
 
                     <div className="col-md-6">
                       <label className="form-label small fw-semibold">Số Điện Thoại (*)</label>
-                      <input type="tel" name="customerPhone" className="form-control" required placeholder="0901234567" />
+                      <input
+                        type="tel"
+                        className="form-control"
+                        required
+                        placeholder="0901234567"
+                        value={walkInForm.customerPhone}
+                        onChange={(e) => setWalkInForm(prev => ({ ...prev, customerPhone: e.target.value }))}
+                      />
                     </div>
 
                     <div className="col-md-6">
                       <label className="form-label small fw-semibold">Ngày Chơi</label>
-                      <input type="date" name="date" className="form-control" defaultValue={selectedScheduleDate} />
+                      <input
+                        type="date"
+                        className="form-control"
+                        required
+                        value={walkInForm.date}
+                        onChange={(e) => setWalkInForm(prev => ({ ...prev, date: e.target.value }))}
+                      />
                     </div>
 
                     <div className="col-md-6">
-                      <label className="form-label small fw-semibold">Khung Giờ Chơi</label>
+                      <label className="form-label small fw-semibold">Khung Giờ Chơi (*)</label>
                       <select
-                        name="timeSlot"
                         className="form-select"
-                        defaultValue={selectedSlotForWalkIn ? selectedSlotForWalkIn.timeSlot : timeSlotsList[4]}
+                        required
+                        value={walkInForm.slotId}
+                        onChange={(e) => handleWalkInSubOrSlotChange(walkInForm.subCourtId, e.target.value)}
                       >
-                        {timeSlotsList.map((s, idx) => (
-                          <option key={idx} value={s}>{s}</option>
+                        {activeTimeSlots.map(s => (
+                          <option key={s.slotId} value={s.slotId}>
+                            {s.label} {s.isPeak ? '(Giờ vàng)' : ''}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -1937,37 +2359,55 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                       <label className="form-label small fw-semibold">Tiền Thu (VNĐ)</label>
                       <input
                         type="number"
-                        name="price"
                         className="form-control"
-                        defaultValue={selectedSlotForWalkIn ? selectedSlotForWalkIn.price : 280000}
+                        min="0"
                         step="10000"
+                        value={walkInForm.price}
+                        onChange={(e) => setWalkInForm(prev => ({ ...prev, price: e.target.value }))}
                       />
                     </div>
 
                     <div className="col-md-6">
                       <label className="form-label small fw-semibold">Hình Thức Thanh Toán</label>
-                      <select name="paymentMethod" className="form-select">
+                      <select
+                        className="form-select"
+                        value={walkInForm.paymentMethod}
+                        onChange={(e) => setWalkInForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
+                      >
                         <option value="Tiền mặt tại quầy">Tiền mặt tại quầy</option>
-                        <option value="Quét mã VietQR">Quét mã VietQR</option>
-                        <option value="Thanh toán sau">Thanh toán sau</option>
+                        <option value="Chuyển khoản VietQR">Chuyển khoản VietQR</option>
                       </select>
+                    </div>
+
+                    <div className="col-md-6">
+                      <label className="form-label small fw-semibold">Trạng Thái Nhận Khách</label>
+                      <select
+                        className="form-select"
+                        value={walkInForm.status}
+                        onChange={(e) => setWalkInForm(prev => ({ ...prev, status: e.target.value }))}
+                      >
+                        <option value="CONFIRMED">Đặt trước / Giữ chỗ (CONFIRMED)</option>
+                        <option value="COMPLETED">Khách đang vào sân (Check-in ngay)</option>
+                      </select>
+                    </div>
+
+                    <div className="col-md-6">
+                      <label className="form-label small fw-semibold">Ghi Chú</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="Ví dụ: Thuê 2 vợt, đặt qua Zalo..."
+                        value={walkInForm.note}
+                        onChange={(e) => setWalkInForm(prev => ({ ...prev, note: e.target.value }))}
+                      />
                     </div>
                   </div>
                 </div>
 
                 <div className="modal-footer bg-light">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => {
-                      setShowWalkInModal(false);
-                      setSelectedSlotForWalkIn(null);
-                    }}
-                  >
-                    Hủy
-                  </button>
-                  <button type="submit" className="btn btn-success px-4">
-                    Xác Nhận Nhận Khách
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowWalkInModal(false)}>Hủy</button>
+                  <button type="submit" disabled={walkInSaving} className="btn btn-success px-4">
+                    {walkInSaving ? 'Đang lưu...' : 'Xác Nhận Nhận Khách'}
                   </button>
                 </div>
               </form>
@@ -1985,11 +2425,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
             <div className="modal-content border-0 shadow-lg rounded-3">
               <div className="modal-header bg-dark text-white">
                 <h5 className="modal-title fw-bold">Chi Tiết Đơn Đặt Sân: {selectedBookingDetail.id}</h5>
-                <button
-                  type="button"
-                  className="btn-close btn-close-white"
-                  onClick={() => setSelectedBookingDetail(null)}
-                ></button>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setSelectedBookingDetail(null)}></button>
               </div>
               <div className="modal-body p-4">
                 <div className="list-group list-group-flush small">
@@ -2017,11 +2453,17 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                     <span className="text-muted">Phương thức thanh toán:</span>
                     <span>{selectedBookingDetail.paymentMethod}</span>
                   </div>
+                  {selectedBookingDetail.note && (
+                    <div className="list-group-item px-0">
+                      <span className="text-muted d-block mb-1">Ghi chú:</span>
+                      <div className="p-2 bg-light rounded text-dark">{selectedBookingDetail.note}</div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="modal-footer bg-light d-flex justify-content-between">
                 <div>
-                  {selectedBookingDetail.status !== 'CANCELLED' && (
+                  {selectedBookingDetail.status === 'CONFIRMED' && (
                     <button
                       className="btn btn-outline-danger btn-sm"
                       onClick={() => handleUpdateBookingStatus(selectedBookingDetail.id, 'CANCELLED')}
@@ -2031,17 +2473,15 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                   )}
                 </div>
                 <div className="d-flex gap-2">
-                  {selectedBookingDetail.status !== 'CHECKED_IN' && selectedBookingDetail.status !== 'CANCELLED' && (
+                  {selectedBookingDetail.status === 'CONFIRMED' && (
                     <button
                       className="btn btn-success btn-sm"
-                      onClick={() => handleUpdateBookingStatus(selectedBookingDetail.id, 'CHECKED_IN')}
+                      onClick={() => handleUpdateBookingStatus(selectedBookingDetail.id, 'COMPLETED')}
                     >
                       Xác Nhận Check-in
                     </button>
                   )}
-                  <button className="btn btn-secondary btn-sm" onClick={() => setSelectedBookingDetail(null)}>
-                    Đóng
-                  </button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setSelectedBookingDetail(null)}>Đóng</button>
                 </div>
               </div>
             </div>
@@ -2061,11 +2501,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                   <i className="bi bi-building-add me-2"></i>
                   Thêm Cụm Sân / Cơ Sở Kinh Doanh Mới
                 </h5>
-                <button
-                  type="button"
-                  className="btn-close btn-close-white"
-                  onClick={() => setShowFacilityModal(false)}
-                ></button>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setShowFacilityModal(false)}></button>
               </div>
 
               <form onSubmit={handleCreateFacility}>
@@ -2073,82 +2509,128 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                   <div className="row g-3">
                     <div className="col-md-7">
                       <label className="form-label small fw-semibold">Tên Cụm Sân (*)</label>
-                      <input
-                        type="text"
-                        name="facilityName"
-                        className="form-control"
-                        required
-                        placeholder="Ví dụ: The Yard Quận 2 - Cơ sở 2"
-                      />
+                      <input type="text" name="facilityName" className="form-control" required placeholder="Ví dụ: The Yard Quận 2 - Cơ sở 2" />
                     </div>
                     <div className="col-md-5">
                       <label className="form-label small fw-semibold">Bộ Môn Thể Thao Chính (*)</label>
                       <select name="sportTypeId" className="form-select" required defaultValue={sportTypes[0]?.sport_type_id || 1}>
                         {sportTypes.map(st => (
-                          <option key={st.sport_type_id} value={st.sport_type_id}>
-                            {st.name}
-                          </option>
+                          <option key={st.sport_type_id} value={st.sport_type_id}>{st.name}</option>
                         ))}
                       </select>
                     </div>
 
                     <div className="col-12">
                       <label className="form-label small fw-semibold">Địa Chỉ Chi Tiết (*)</label>
-                      <input
-                        type="text"
-                        name="address"
-                        className="form-control"
-                        required
-                        placeholder="Số nhà, Tên đường, Phường/Xã, Quận/Huyện"
-                      />
+                      <input type="text" name="address" className="form-control" required placeholder="Số nhà, Tên đường, Phường/Xã, Quận/Huyện" />
                     </div>
 
                     <div className="col-md-6">
                       <label className="form-label small fw-semibold">Thành Phố / Khu Vực</label>
-                      <input
-                        type="text"
-                        name="area"
-                        className="form-control"
-                        defaultValue="TP. Hồ Chí Minh"
-                      />
+                      <input type="text" name="area" className="form-control" defaultValue="TP. Hồ Chí Minh" />
                     </div>
 
                     <div className="col-md-6">
                       <label className="form-label small fw-semibold">Giá Thuê Tham Khảo (VNĐ/slot) (*)</label>
-                      <input
-                        type="number"
-                        name="pricePerSlot"
-                        className="form-control"
-                        required
-                        min="0"
-                        step="10000"
-                        defaultValue="200000"
-                      />
+                      <input type="number" name="pricePerSlot" className="form-control" required min="0" step="10000" defaultValue="200000" />
                     </div>
 
                     <div className="col-12">
                       <label className="form-label small fw-semibold">Tiện Ích & Mô Tả Cụm Sân</label>
-                      <input
-                        type="text"
-                        name="description"
-                        className="form-control"
-                        defaultValue="Bãi đỗ xe, Đèn Led ban đêm, Phòng thay đồ"
-                        placeholder="Ví dụ: Bãi đỗ ô tô, Phòng tắm nóng lạnh, Quầy nước"
-                      />
+                      <input type="text" name="description" className="form-control" defaultValue="Bãi đỗ xe, Đèn Led ban đêm, Phòng thay đồ" />
                     </div>
                   </div>
                 </div>
 
                 <div className="modal-footer bg-light">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setShowFacilityModal(false)}
-                  >
-                    Hủy
-                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowFacilityModal(false)}>Hủy</button>
                   <button type="submit" disabled={facilitySaving} className="btn btn-brand px-4">
                     {facilitySaving ? 'Đang tạo...' : 'Tạo Cụm Sân'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL 5: KHÓA KHUNG GIỜ (COURT BLOCKS -> POSTGRESQL)
+          ======================================================== */}
+      {showBlockModal && currentFacility && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg rounded-3">
+              <div className="modal-header bg-danger text-white">
+                <h5 className="modal-title fw-bold">
+                  <i className="bi bi-lock-fill me-2"></i>
+                  Khóa Khung Giờ Sân
+                </h5>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setShowBlockModal(false)}></button>
+              </div>
+
+              <form onSubmit={handleCreateBlock}>
+                <div className="modal-body p-4">
+                  {blockError && (
+                    <div className="alert alert-danger py-2 small mb-3">
+                      <i className="bi bi-exclamation-triangle-fill me-1"></i>
+                      {blockError}
+                    </div>
+                  )}
+                  <div className="mb-3">
+                    <label className="form-label small fw-semibold">Áp dụng cho sân</label>
+                    <select
+                      className="form-select"
+                      value={blockForm.subCourtId}
+                      onChange={(e) => setBlockForm(prev => ({ ...prev, subCourtId: e.target.value }))}
+                    >
+                      <option value="">Toàn bộ cụm sân ({currentFacility.name})</option>
+                      {currentSubCourts.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="row g-2 mb-3">
+                    <div className="col-6">
+                      <label className="form-label small fw-semibold">Ngày khóa</label>
+                      <input
+                        type="date"
+                        className="form-control"
+                        required
+                        value={blockForm.date}
+                        onChange={(e) => setBlockForm(prev => ({ ...prev, date: e.target.value }))}
+                      />
+                    </div>
+                    <div className="col-6">
+                      <label className="form-label small fw-semibold">Khung giờ (*)</label>
+                      <select
+                        className="form-select"
+                        required
+                        value={blockForm.slotId}
+                        onChange={(e) => setBlockForm(prev => ({ ...prev, slotId: e.target.value }))}
+                      >
+                        {activeTimeSlots.map(s => (
+                          <option key={s.slotId} value={s.slotId}>{s.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="mb-2">
+                    <label className="form-label small fw-semibold">Lý do khóa (*)</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      required
+                      placeholder="Ví dụ: Bảo trì đèn, Giải đấu nội bộ..."
+                      value={blockForm.reason}
+                      onChange={(e) => setBlockForm(prev => ({ ...prev, reason: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer bg-light">
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowBlockModal(false)}>Hủy</button>
+                  <button type="submit" disabled={blockSaving} className="btn btn-danger px-4">
+                    {blockSaving ? 'Đang khóa...' : 'Xác Nhận Khóa Giờ'}
                   </button>
                 </div>
               </form>
