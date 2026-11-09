@@ -288,6 +288,7 @@ export default function App() {
   if (currentView === 'owner-dashboard') {
     return (
       <OwnerDashboard
+        onOpenAuth={(mode) => setCurrentView(mode)}
         currentUser={currentUser}
         onBackToHome={() => {
           setCurrentView('home');
