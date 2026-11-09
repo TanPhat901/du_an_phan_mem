@@ -13,6 +13,7 @@ export default function MyBookingsModal({
   bookings = [],
   loading = false,
   currentUser,
+  onRequireAuth,
   onClose,
   onRefreshBookings,
   onLookupByPhone,
@@ -33,9 +34,10 @@ export default function MyBookingsModal({
   const [actionMsg, setActionMsg] = useState('');
 
   const counts = useMemo(() => {
-    const res = { ALL: bookings.length, CONFIRMED: 0, COMPLETED: 0, CANCELLED: 0 };
+    const res = { ALL: bookings.length, PENDING: 0, CONFIRMED: 0, COMPLETED: 0, CANCELLED: 0 };
     bookings.forEach((b) => {
-      if (b.status === 'CONFIRMED') res.CONFIRMED += 1;
+      if (b.status === 'PENDING') res.PENDING += 1;
+      else if (b.status === 'CONFIRMED') res.CONFIRMED += 1;
       else if (b.status === 'COMPLETED') res.COMPLETED += 1;
       else if (b.status === 'CANCELLED') res.CANCELLED += 1;
     });
@@ -112,6 +114,7 @@ export default function MyBookingsModal({
   const getBadgeClass = (status) => {
     if (status === 'CANCELLED') return 'bg-danger-subtle text-danger border border-danger-subtle';
     if (status === 'COMPLETED') return 'bg-primary-subtle text-primary border border-primary-subtle';
+    if (status === 'PENDING') return 'bg-warning-subtle text-warning-emphasis border border-warning-subtle';
     return 'bg-success-subtle text-success border border-success-subtle';
   };
 
@@ -154,10 +157,19 @@ export default function MyBookingsModal({
                     onChange={(e) => setPhoneSearch(e.target.value)}
                   />
                 </div>
-                <div className="col-md-4 d-flex align-items-end">
-                  <button type="submit" className="btn btn-brand btn-sm w-100 mt-md-4" disabled={loading}>
-                    <i className="bi bi-search me-1"></i>Tra cứu đơn đặt
+                <div className="col-md-4 d-flex align-items-end gap-2">
+                  <button type="submit" className="btn btn-brand btn-sm flex-grow-1 mt-md-4" disabled={loading}>
+                    <i className="bi bi-search me-1"></i>Tra cứu đơn
                   </button>
+                  {onRequireAuth && (
+                    <button
+                      type="button"
+                      className="btn btn-outline-success btn-sm mt-md-4"
+                      onClick={() => onRequireAuth('login')}
+                    >
+                      Đăng nhập
+                    </button>
+                  )}
                 </div>
               </form>
             )}
@@ -238,11 +250,12 @@ export default function MyBookingsModal({
             {/* Filter & Search Bar */}
             {bookings.length > 0 && (
               <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-                <div className="btn-group btn-group-sm" role="group" aria-label="Lọc theo trạng thái">
+                <div className="btn-group btn-group-sm flex-wrap" role="group" aria-label="Lọc theo trạng thái">
                   {[
                     { key: 'ALL', label: `Tất cả (${counts.ALL})` },
-                    { key: 'CONFIRMED', label: `Sắp tới (${counts.CONFIRMED})` },
-                    { key: 'COMPLETED', label: `Hoàn thành (${counts.COMPLETED})` },
+                    { key: 'PENDING', label: `Chờ xác nhận (${counts.PENDING})` },
+                    { key: 'CONFIRMED', label: `Đã xác nhận (${counts.CONFIRMED})` },
+                    { key: 'COMPLETED', label: `Đã Check-in (${counts.COMPLETED})` },
                     { key: 'CANCELLED', label: `Đã hủy (${counts.CANCELLED})` }
                   ].map((tab) => (
                     <button
@@ -334,7 +347,7 @@ export default function MyBookingsModal({
                         </td>
                         <td>
                           <span className={`badge px-2 py-1 ${getBadgeClass(b.status)}`}>
-                            {b.statusLabel || b.status || 'Đã xác nhận'}
+                            {b.statusLabel || (b.status === 'PENDING' ? 'Chờ chủ sân xác nhận' : b.status === 'COMPLETED' ? 'Đã Check-in' : b.status === 'CANCELLED' ? 'Đã hủy' : 'Đã xác nhận')}
                           </span>
                           {b.cancelReason && (
                             <div className="text-muted mt-1" style={{ fontSize: '0.7rem' }}>
@@ -355,7 +368,7 @@ export default function MyBookingsModal({
                               </button>
                             )}
 
-                            {currentUser && (b.status === 'CONFIRMED' || b.status === 'COMPLETED') && onReviewCourt && (
+                            {currentUser && b.status === 'COMPLETED' && onReviewCourt && (
                               <button
                                 type="button"
                                 className="btn btn-sm btn-outline-warning text-dark"
@@ -384,7 +397,7 @@ export default function MyBookingsModal({
                               </button>
                             )}
 
-                            {currentUser && b.status === 'CONFIRMED' && (
+                            {currentUser && (b.status === 'PENDING' || b.status === 'CONFIRMED') && (
                               <button
                                 type="button"
                                 className="btn btn-sm btn-outline-danger"

@@ -97,6 +97,18 @@ export default function TicketBarcode({ booking, compact = false }) {
   if (!booking) return null;
 
   const ticketCode = booking.id || `BK-${booking.bookingId || 0}`;
+  const isPending = booking.status === 'PENDING';
+  const isCompleted = booking.status === 'COMPLETED';
+  const headerGradient = isPending
+    ? 'linear-gradient(135deg, #b45309 0%, #d97706 100%)'
+    : isCompleted
+      ? 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)'
+      : 'linear-gradient(135deg, #0b4d3c 0%, #11785c 100%)';
+  const headerLabel = isPending
+    ? 'PHIẾU ĐẶT SÂN • CHỜ CHỦ SÂN XÁC NHẬN'
+    : isCompleted
+      ? 'VÉ ĐIỆN TỬ • ĐÃ CHECK-IN THÀNH CÔNG'
+      : 'VÉ ĐIỆN TỬ CHECK-IN SÂN • ĐÃ XÁC NHẬN';
   const checkinPayload = `SPORTSBOOKING|${ticketCode}|${booking.date}|${booking.timeSlot}`;
   const checkinQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=132x132&data=${encodeURIComponent(checkinPayload)}`;
 
@@ -129,13 +141,13 @@ export default function TicketBarcode({ booking, compact = false }) {
       <div className="border rounded-4 overflow-hidden bg-white shadow-xs">
         <div
           className="px-3 py-2 text-white d-flex justify-content-between align-items-center"
-          style={{ background: 'linear-gradient(135deg, #0b4d3c 0%, #11785c 100%)' }}
+          style={{ background: headerGradient }}
         >
           <div className="d-flex align-items-center gap-2">
-            <i className="bi bi-qr-code-scan"></i>
-            <span className="fw-bold small">VÉ ĐIỆN TỬ CHECK-IN SÂN</span>
+            <i className={`bi ${isPending ? 'bi-hourglass-split' : isCompleted ? 'bi-patch-check-fill' : 'bi-qr-code-scan'}`}></i>
+            <span className="fw-bold small">{headerLabel}</span>
           </div>
-          <span className="badge bg-white text-brand-dark fw-bold">{ticketCode}</span>
+          <span className="badge bg-white text-dark fw-bold">{ticketCode}</span>
         </div>
 
         <div className={compact ? 'p-3' : 'p-4'}>
@@ -197,7 +209,11 @@ export default function TicketBarcode({ booking, compact = false }) {
                 </div>
               </div>
               <div className="text-muted mt-1" style={{ fontSize: '0.68rem' }}>
-                Đưa mã này tại quầy để check-in
+                {isPending
+                  ? 'Đang chờ chủ sân xác nhận đơn trước khi Check-in'
+                  : isCompleted
+                    ? 'Đã hoàn tất Check-in tại sân'
+                    : 'Đưa mã này tại quầy để check-in'}
               </div>
             </div>
           </div>

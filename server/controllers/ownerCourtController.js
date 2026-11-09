@@ -788,7 +788,7 @@ const getOwnerBookings = async (req, res) => {
       values.push(req.query.date);
     }
 
-    if (req.query.status && ['CONFIRMED', 'COMPLETED', 'CANCELLED'].includes(req.query.status)) {
+    if (req.query.status && ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].includes(req.query.status)) {
       conditions.push(`b.status = $${idx++}`);
       values.push(req.query.status);
     }
@@ -822,7 +822,11 @@ const getOwnerBookings = async (req, res) => {
        LEFT JOIN time_slots ts ON ts.slot_id = bd.slot_id
        LEFT JOIN sub_courts sc ON sc.sub_court_id = COALESCE(bd.sub_court_id, b.sub_court_id)
        WHERE ${conditions.join(' AND ')}
-       ORDER BY b.booking_date DESC, ts.start_time ASC NULLS LAST, b.created_at DESC`,
+       ORDER BY
+         CASE WHEN b.status = 'PENDING' THEN 0 WHEN b.status = 'CONFIRMED' THEN 1 ELSE 2 END,
+         b.booking_date DESC,
+         ts.start_time ASC NULLS LAST,
+         b.created_at DESC`,
       values
     );
 
@@ -1253,14 +1257,10 @@ const updateOwnerBookingStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Trạng thái cập nhật không hợp lệ.' });
     }
 
-    const reason = typeof req.body?.reason === 'string' && req.body.reason.trim()
-      ? req.body.reason.trim().slice(0, 500)
-      : (mappedStatus === 'CANCELLED' ? 'Chủ sân hủy đơn' : 'Chủ sân cập nhật trạng thái check-in');
-
     await client.query('BEGIN');
 
     const checkRes = await client.query(
-      `SELECT b.booking_id, b.status
+      `SELECT b.booking_id, b.status, b.payment_method
        FROM bookings b
        JOIN courts c ON c.court_id = b.court_id
        JOIN users u ON u.user_id = c.owner_id
@@ -1274,10 +1274,36 @@ const updateOwnerBookingStatus = async (req, res) => {
     }
 
     const currentStatus = checkRes.rows[0].status;
+    const paymentMethodText = String(checkRes.rows[0].payment_method || '').toLowerCase();
+
     if (currentStatus === 'CANCELLED' && mappedStatus !== 'CANCELLED') {
       await client.query('ROLLBACK');
       return res.status(400).json({ success: false, message: 'Đơn đã bị hủy không thể khôi phục.' });
     }
+    if (currentStatus === 'COMPLETED' && mappedStatus !== 'COMPLETED') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, message: 'Đơn đã hoàn tất Check-in không thể đổi sang trạng thái khác.' });
+    }
+    if (currentStatus === 'PENDING' && mappedStatus === 'COMPLETED') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        message: 'Đơn đang chờ xác nhận. Vui lòng xác nhận đơn trước khi Check-in cho khách.'
+      });
+    }
+
+    const defaultReason =
+      mappedStatus === 'CANCELLED'
+        ? currentStatus === 'PENDING'
+          ? 'Chủ sân từ chối / không xác nhận đơn'
+          : 'Chủ sân hủy đơn'
+        : mappedStatus === 'CONFIRMED'
+          ? 'Chủ sân đã xác nhận đơn đặt sân'
+          : 'Chủ sân xác nhận khách đã Check-in vào sân';
+
+    const reason = typeof req.body?.reason === 'string' && req.body.reason.trim()
+      ? req.body.reason.trim().slice(0, 500)
+      : defaultReason;
 
     if (mappedStatus === 'CANCELLED') {
       await client.query(
@@ -1291,6 +1317,16 @@ const updateOwnerBookingStatus = async (req, res) => {
         [bookingId]
       );
     } else {
+      let nextPaymentStatus = null;
+      if (mappedStatus === 'COMPLETED') {
+        nextPaymentStatus = 'PAID';
+      } else if (
+        mappedStatus === 'CONFIRMED' &&
+        (paymentMethodText.includes('vietqr') || paymentMethodText.includes('vnpay') || paymentMethodText.includes('online'))
+      ) {
+        nextPaymentStatus = 'PAID_ONLINE';
+      }
+
       await client.query(
         `UPDATE bookings
          SET status = $1,
@@ -1298,24 +1334,28 @@ const updateOwnerBookingStatus = async (req, res) => {
              cancelled_at = NULL,
              updated_at = NOW()
          WHERE booking_id = $2`,
-        [mappedStatus, bookingId, mappedStatus === 'COMPLETED' ? 'PAID' : null]
+        [mappedStatus, bookingId, nextPaymentStatus]
       );
     }
 
-    await client.query(
-      `INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by, reason)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [bookingId, currentStatus, mappedStatus, ownerUserId, reason]
-    );
+    if (currentStatus !== mappedStatus) {
+      await client.query(
+        `INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by, reason)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [bookingId, currentStatus, mappedStatus, ownerUserId, reason]
+      );
+    }
 
     await client.query('COMMIT');
     return res.status(200).json({
       success: true,
       message: mappedStatus === 'COMPLETED'
         ? `Đã xác nhận Check-in cho đơn BK-${bookingId}!`
-        : mappedStatus === 'CANCELLED'
-          ? `Đã hủy đơn BK-${bookingId} và mở lại khung giờ trống.`
-          : `Đã cập nhật đơn BK-${bookingId}.`,
+        : mappedStatus === 'CONFIRMED'
+          ? `Đã xác nhận đơn đặt sân BK-${bookingId}!`
+          : currentStatus === 'PENDING'
+            ? `Đã từ chối đơn BK-${bookingId} và mở lại khung giờ trống.`
+            : `Đã hủy đơn BK-${bookingId} và mở lại khung giờ trống.`,
       data: { id: `BK-${bookingId}`, bookingId, status: mappedStatus }
     });
   } catch (error) {
@@ -1557,20 +1597,22 @@ const getOwnerAnalytics = async (req, res) => {
       pool.query(
         `SELECT
            COALESCE(SUM(total_amount) FILTER (
-             WHERE status <> 'CANCELLED' AND DATE_TRUNC('month', booking_date) = DATE_TRUNC('month', $2::date)
+             WHERE status IN ('CONFIRMED', 'COMPLETED') AND DATE_TRUNC('month', booking_date) = DATE_TRUNC('month', $2::date)
            ), 0)::numeric AS monthly_revenue,
            COUNT(*) FILTER (
-             WHERE status <> 'CANCELLED' AND DATE_TRUNC('month', booking_date) = DATE_TRUNC('month', $2::date)
+             WHERE status IN ('CONFIRMED', 'COMPLETED') AND DATE_TRUNC('month', booking_date) = DATE_TRUNC('month', $2::date)
            )::int AS monthly_bookings,
            COALESCE(SUM(total_amount) FILTER (
-             WHERE status <> 'CANCELLED'
+             WHERE status IN ('CONFIRMED', 'COMPLETED')
                AND DATE_TRUNC('month', booking_date) = DATE_TRUNC('month', $2::date)
                AND (LOWER(COALESCE(payment_method, '')) LIKE '%vietqr%' OR LOWER(COALESCE(payment_method, '')) LIKE '%vnpay%' OR LOWER(COALESCE(payment_method, '')) LIKE '%online%')
            ), 0)::numeric AS monthly_online_revenue,
-           COUNT(*) FILTER (WHERE status <> 'CANCELLED')::int AS total_valid_bookings,
+           COUNT(*) FILTER (WHERE status IN ('CONFIRMED', 'COMPLETED'))::int AS total_valid_bookings,
            COUNT(*) FILTER (WHERE status = 'COMPLETED')::int AS checked_in_count,
-           COUNT(*) FILTER (WHERE booking_date = $2::date AND status <> 'CANCELLED')::int AS today_bookings,
-           COALESCE(SUM(total_amount) FILTER (WHERE booking_date = $2::date AND status <> 'CANCELLED'), 0)::numeric AS today_revenue
+           COUNT(*) FILTER (WHERE status = 'PENDING')::int AS pending_bookings_count,
+           COUNT(*) FILTER (WHERE booking_date = $2::date AND status IN ('CONFIRMED', 'COMPLETED'))::int AS today_bookings,
+           COUNT(*) FILTER (WHERE booking_date = $2::date AND status = 'PENDING')::int AS today_pending_count,
+           COALESCE(SUM(total_amount) FILTER (WHERE booking_date = $2::date AND status IN ('CONFIRMED', 'COMPLETED')), 0)::numeric AS today_revenue
          FROM bookings
          WHERE court_id = $1`,
         [courtId, targetDate]
@@ -1588,8 +1630,8 @@ const getOwnerAnalytics = async (req, res) => {
         `SELECT
            TO_CHAR(d::date, 'YYYY-MM-DD') AS day_date,
            EXTRACT(DOW FROM d::date)::int AS dow,
-           COALESCE(SUM(b.total_amount) FILTER (WHERE b.status <> 'CANCELLED'), 0)::numeric AS revenue,
-           COUNT(b.booking_id) FILTER (WHERE b.status <> 'CANCELLED')::int AS bookings_count
+           COALESCE(SUM(b.total_amount) FILTER (WHERE b.status IN ('CONFIRMED', 'COMPLETED')), 0)::numeric AS revenue,
+           COUNT(b.booking_id) FILTER (WHERE b.status IN ('CONFIRMED', 'COMPLETED'))::int AS bookings_count
          FROM GENERATE_SERIES($2::date - INTERVAL '6 days', $2::date, '1 day') AS d
          LEFT JOIN bookings b ON b.court_id = $1 AND b.booking_date = d::date
          GROUP BY d
@@ -1599,8 +1641,8 @@ const getOwnerAnalytics = async (req, res) => {
       pool.query(
         `SELECT
            COALESCE(st.name, c_st.name, 'Khác') AS sport_name,
-           COALESCE(SUM(b.total_amount) FILTER (WHERE b.status <> 'CANCELLED'), 0)::numeric AS revenue,
-           COUNT(b.booking_id) FILTER (WHERE b.status <> 'CANCELLED')::int AS bookings_count
+           COALESCE(SUM(b.total_amount) FILTER (WHERE b.status IN ('CONFIRMED', 'COMPLETED')), 0)::numeric AS revenue,
+           COUNT(b.booking_id) FILTER (WHERE b.status IN ('CONFIRMED', 'COMPLETED'))::int AS bookings_count
          FROM bookings b
          JOIN courts c ON c.court_id = b.court_id
          LEFT JOIN sport_types c_st ON c_st.sport_type_id = c.sport_type_id
@@ -1653,6 +1695,8 @@ const getOwnerAnalytics = async (req, res) => {
         platformFeeEstimate: Math.round(monthlyOnlineRevenue * 0.05),
         totalBookings: Number(s.total_valid_bookings || 0),
         checkedInCount: Number(s.checked_in_count || 0),
+        pendingBookingsCount: Number(s.pending_bookings_count || 0),
+        todayPendingCount: Number(s.today_pending_count || 0),
         todayBookingsCount: Number(s.today_bookings || 0),
         todayRevenue: Number(s.today_revenue || 0),
         occupancyRate,

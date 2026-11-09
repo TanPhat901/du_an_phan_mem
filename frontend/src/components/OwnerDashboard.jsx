@@ -416,6 +416,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
 
   const todayYmd = formatLocalYMD();
   const todayBookings = bookings.filter(b => b.date === todayYmd);
+  const pendingBookingsCount = bookings.filter(b => b.status === 'PENDING').length;
   const filteredBookingsList = bookings.filter(b => {
     if (bookingStatusFilter === 'ALL') return true;
     return b.status === bookingStatusFilter;
@@ -665,13 +666,16 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     }
   };
 
-  // Cập nhật trạng thái đơn (COMPLETED / CANCELLED) vào PostgreSQL
-  const handleUpdateBookingStatus = async (bookingId, newStatus) => {
+  // Cập nhật trạng thái đơn (PENDING -> CONFIRMED -> COMPLETED / CANCELLED) vào PostgreSQL
+  const handleUpdateBookingStatus = async (bookingId, newStatus, currentStatus = '') => {
     let reason = '';
     if (newStatus === 'CANCELLED') {
+      const isRejecting = currentStatus === 'PENDING';
       const promptReason = window.prompt(
-        `Xác nhận hủy đơn [${bookingId}]?\nNhập lý do hủy (tùy chọn):`,
-        'Chủ sân hủy theo yêu cầu'
+        isRejecting
+          ? `Từ chối yêu cầu đặt sân [${bookingId}]?\nNhập lý do từ chối (tùy chọn):`
+          : `Xác nhận hủy đơn [${bookingId}]?\nNhập lý do hủy (tùy chọn):`,
+        isRejecting ? 'Chủ sân từ chối / không xác nhận đơn' : 'Chủ sân hủy theo yêu cầu'
       );
       if (promptReason === null) return;
       reason = promptReason.trim();
@@ -916,9 +920,9 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
 
   // Xuất file CSV sao kê doanh thu thật
   const handleExportFinanceCsv = () => {
-    const validRows = bookings.filter(b => b.status !== 'CANCELLED');
+    const validRows = bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'COMPLETED');
     if (validRows.length === 0) {
-      showToast('Chưa có giao dịch hợp lệ để xuất báo cáo.');
+      showToast('Chưa có giao dịch hợp lệ đã xác nhận để xuất báo cáo.');
       return;
     }
     const headers = ['Ma don', 'Ngay choi', 'Khung gio', 'San con', 'Khach hang', 'SDT', 'Thanh toan', 'Trang thai', 'So tien (VND)'];
@@ -958,6 +962,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     : 0;
 
   const getBookingBadge = (status) => {
+    if (status === 'PENDING') return { cls: 'bg-warning text-dark', label: 'Chờ xác nhận' };
     if (status === 'COMPLETED') return { cls: 'bg-success', label: 'Đã Check-in' };
     if (status === 'CANCELLED') return { cls: 'bg-danger', label: 'Đã hủy' };
     return { cls: 'bg-primary', label: 'Đã xác nhận' };
@@ -1221,7 +1226,11 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                     >
                       <i className="bi bi-calendar3"></i>
                       <span>Lịch Đặt & Khung Giờ</span>
-                      {(analytics?.todayBookingsCount || todayBookings.length) > 0 && (
+                      {pendingBookingsCount > 0 ? (
+                        <span className="badge rounded-pill bg-warning text-dark fw-bold" style={{ fontSize: '0.68rem' }}>
+                          {pendingBookingsCount} chờ duyệt
+                        </span>
+                      ) : (analytics?.todayBookingsCount || todayBookings.length) > 0 && (
                         <span className="badge rounded-pill bg-danger" style={{ fontSize: '0.65rem' }}>
                           {analytics?.todayBookingsCount ?? todayBookings.length}
                         </span>
@@ -1268,6 +1277,30 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                   ========================================== */}
               {currentFacility && activeTab === 'overview' && (
                 <div>
+                  {pendingBookingsCount > 0 && (
+                    <div className="alert alert-warning border border-warning-subtle shadow-sm d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4 rounded-3">
+                      <div className="d-flex align-items-center gap-2">
+                        <i className="bi bi-bell-fill fs-5 text-warning-emphasis"></i>
+                        <div>
+                          <strong>Có {pendingBookingsCount} yêu cầu đặt sân mới đang chờ bạn xác nhận!</strong>
+                          <div className="small text-muted">
+                            Khách hàng đã gửi yêu cầu đặt sân trực tuyến. Hãy kiểm tra và bấm "Xác nhận" để chốt lịch chơi.
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-warning btn-sm fw-bold rounded-pill px-3"
+                        onClick={() => {
+                          setBookingStatusFilter('PENDING');
+                          setActiveTab('schedule');
+                        }}
+                      >
+                        Xem & Duyệt ngay ({pendingBookingsCount})
+                      </button>
+                    </div>
+                  )}
+
                   {/* 4 KPI Cards */}
                   <div className="row g-3 mb-4">
                     <div className="col-xl-3 col-sm-6">
@@ -1296,7 +1329,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                           </div>
                         </div>
                         <h3 className="fw-bold text-dark mb-1">
-                          {analytics?.totalBookings ?? bookings.filter(b => b.status !== 'CANCELLED').length} lượt
+                          {analytics?.totalBookings ?? bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'COMPLETED').length} lượt
                         </h3>
                         <div className="small text-muted d-flex align-items-center gap-1">
                           <span className="text-success fw-bold">+{analytics?.todayBookingsCount ?? todayBookings.length} hôm nay</span> • {analytics?.checkedInCount ?? 0} đã check-in
@@ -1531,11 +1564,20 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                                   <td><span className={`badge rounded-pill ${badge.cls}`}>{badge.label}</span></td>
                                   <td className="text-end">
                                     <div className="btn-group btn-group-sm">
+                                      {b.status === 'PENDING' && (
+                                        <button
+                                          className="btn btn-warning text-dark fw-semibold"
+                                          title="Xác nhận đơn đặt sân"
+                                          onClick={() => handleUpdateBookingStatus(b.id, 'CONFIRMED', b.status)}
+                                        >
+                                          <i className="bi bi-check-circle me-1"></i> Xác nhận
+                                        </button>
+                                      )}
                                       {b.status === 'CONFIRMED' && (
                                         <button
                                           className="btn btn-outline-success"
                                           title="Check-in khi khách tới sân"
-                                          onClick={() => handleUpdateBookingStatus(b.id, 'COMPLETED')}
+                                          onClick={() => handleUpdateBookingStatus(b.id, 'COMPLETED', b.status)}
                                         >
                                           <i className="bi bi-check-lg me-1"></i> Check-in
                                         </button>
@@ -1547,11 +1589,11 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                                       >
                                         <i className="bi bi-eye"></i>
                                       </button>
-                                      {b.status === 'CONFIRMED' && (
+                                      {(b.status === 'PENDING' || b.status === 'CONFIRMED') && (
                                         <button
                                           className="btn btn-outline-danger"
-                                          title="Hủy đơn đặt"
-                                          onClick={() => handleUpdateBookingStatus(b.id, 'CANCELLED')}
+                                          title={b.status === 'PENDING' ? 'Từ chối yêu cầu đặt' : 'Hủy đơn đặt'}
+                                          onClick={() => handleUpdateBookingStatus(b.id, 'CANCELLED', b.status)}
                                         >
                                           <i className="bi bi-x-lg"></i>
                                         </button>
@@ -1775,8 +1817,12 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                             <span>Trống</span>
                           </span>
                           <span className="d-flex align-items-center gap-1">
+                            <span className="d-inline-block rounded bg-warning" style={{ width: '14px', height: '14px' }}></span>
+                            <span>Chờ xác nhận</span>
+                          </span>
+                          <span className="d-flex align-items-center gap-1">
                             <span className="d-inline-block rounded bg-primary text-white" style={{ width: '14px', height: '14px' }}></span>
-                            <span>Đã đặt</span>
+                            <span>Đã xác nhận</span>
                           </span>
                           <span className="d-flex align-items-center gap-1">
                             <span className="d-inline-block rounded bg-danger-subtle border border-danger" style={{ width: '14px', height: '14px' }}></span>
@@ -1888,6 +1934,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
 
                                   if (bookingMatch) {
                                     const isDone = bookingMatch.status === 'COMPLETED';
+                                    const isPending = bookingMatch.status === 'PENDING';
                                     return (
                                       <td
                                         key={court.id}
@@ -1896,10 +1943,16 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                                         title={`Bấm để xem chi tiết đơn: ${bookingMatch.customerName}`}
                                         style={{ cursor: 'pointer' }}
                                       >
-                                        <div className={`p-2 rounded text-white shadow-xs text-start ${isDone ? 'bg-success' : 'bg-primary'}`}>
+                                        <div className={`p-2 rounded shadow-xs text-start ${
+                                          isDone
+                                            ? 'bg-success text-white'
+                                            : isPending
+                                              ? 'bg-warning text-dark'
+                                              : 'bg-primary text-white'
+                                        }`}>
                                           <div className="fw-bold small text-truncate">{bookingMatch.customerName}</div>
-                                          <div style={{ fontSize: '0.68rem', opacity: 0.9 }}>
-                                            {isDone ? '✅ Đã Check-in' : '🔵 Đã xác nhận'}
+                                          <div style={{ fontSize: '0.68rem', opacity: 0.92 }}>
+                                            {isDone ? '✅ Đã Check-in' : isPending ? '⏳ Chờ xác nhận' : '🔵 Đã xác nhận'}
                                           </div>
                                         </div>
                                       </td>
@@ -1979,9 +2032,10 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                       <h6 className="fw-bold text-dark mb-0">
                         Toàn bộ đơn đặt sân tại {currentFacility.name} ({filteredBookingsList.length})
                       </h6>
-                      <div className="btn-group btn-group-sm">
+                      <div className="btn-group btn-group-sm flex-wrap">
                         {[
                           { key: 'ALL', label: 'Tất cả' },
+                          { key: 'PENDING', label: `Chờ xác nhận (${pendingBookingsCount})` },
                           { key: 'CONFIRMED', label: 'Đã xác nhận' },
                           { key: 'COMPLETED', label: 'Đã Check-in' },
                           { key: 'CANCELLED', label: 'Đã hủy' }
@@ -2039,13 +2093,22 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                                 <td><span className={`badge rounded-pill ${badge.cls}`}>{badge.label}</span></td>
                                 <td className="text-end">
                                   <div className="btn-group btn-group-sm">
+                                    {b.status === 'PENDING' && (
+                                      <button
+                                        className="btn btn-warning text-dark fw-semibold"
+                                        onClick={() => handleUpdateBookingStatus(b.id, 'CONFIRMED', b.status)}
+                                        title="Xác nhận đơn đặt sân"
+                                      >
+                                        <i className="bi bi-check-circle me-1"></i>Xác nhận
+                                      </button>
+                                    )}
                                     {b.status === 'CONFIRMED' && (
                                       <button
                                         className="btn btn-outline-success"
-                                        onClick={() => handleUpdateBookingStatus(b.id, 'COMPLETED')}
+                                        onClick={() => handleUpdateBookingStatus(b.id, 'COMPLETED', b.status)}
                                         title="Check-in khách vào sân"
                                       >
-                                        <i className="bi bi-check2"></i>
+                                        <i className="bi bi-check2 me-1"></i>Check-in
                                       </button>
                                     )}
                                     <button
@@ -2055,11 +2118,11 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                                     >
                                       <i className="bi bi-eye"></i>
                                     </button>
-                                    {b.status === 'CONFIRMED' && (
+                                    {(b.status === 'PENDING' || b.status === 'CONFIRMED') && (
                                       <button
                                         className="btn btn-outline-danger"
-                                        onClick={() => handleUpdateBookingStatus(b.id, 'CANCELLED')}
-                                        title="Hủy đơn đặt"
+                                        onClick={() => handleUpdateBookingStatus(b.id, 'CANCELLED', b.status)}
+                                        title={b.status === 'PENDING' ? 'Từ chối yêu cầu đặt' : 'Hủy đơn đặt'}
                                       >
                                         <i className="bi bi-x-lg"></i>
                                       </button>
@@ -2147,14 +2210,14 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                               </tr>
                             </thead>
                             <tbody>
-                              {bookings.filter(b => b.status !== 'CANCELLED').length === 0 ? (
+                              {bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'COMPLETED').length === 0 ? (
                                 <tr>
                                   <td colSpan="6" className="text-center py-4 text-muted">
-                                    Chưa có giao dịch đặt sân nào.
+                                    Chưa có giao dịch đặt sân đã xác nhận nào.
                                   </td>
                                 </tr>
                               ) : (
-                                bookings.filter(b => b.status !== 'CANCELLED').slice(0, 15).map(b => (
+                                bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'COMPLETED').slice(0, 15).map(b => (
                                   <tr key={b.id}>
                                     <td className="fw-bold">{b.id}</td>
                                     <td className="small text-muted">{b.date}</td>
@@ -2747,6 +2810,12 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                     <span className="text-muted">Phương thức thanh toán:</span>
                     <span>{selectedBookingDetail.paymentMethod}</span>
                   </div>
+                  <div className="list-group-item d-flex justify-content-between align-items-center px-0">
+                    <span className="text-muted">Trạng thái đơn:</span>
+                    <span className={`badge rounded-pill ${getBookingBadge(selectedBookingDetail.status).cls}`}>
+                      {getBookingBadge(selectedBookingDetail.status).label}
+                    </span>
+                  </div>
                   {selectedBookingDetail.note && (
                     <div className="list-group-item px-0">
                       <span className="text-muted d-block mb-1">Ghi chú:</span>
@@ -2757,20 +2826,28 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
               </div>
               <div className="modal-footer bg-light d-flex justify-content-between">
                 <div>
-                  {selectedBookingDetail.status === 'CONFIRMED' && (
+                  {(selectedBookingDetail.status === 'PENDING' || selectedBookingDetail.status === 'CONFIRMED') && (
                     <button
                       className="btn btn-outline-danger btn-sm"
-                      onClick={() => handleUpdateBookingStatus(selectedBookingDetail.id, 'CANCELLED')}
+                      onClick={() => handleUpdateBookingStatus(selectedBookingDetail.id, 'CANCELLED', selectedBookingDetail.status)}
                     >
-                      Hủy Đơn Đặt
+                      {selectedBookingDetail.status === 'PENDING' ? 'Từ chối / Hủy đơn' : 'Hủy Đơn Đặt'}
                     </button>
                   )}
                 </div>
                 <div className="d-flex gap-2">
+                  {selectedBookingDetail.status === 'PENDING' && (
+                    <button
+                      className="btn btn-warning text-dark fw-semibold btn-sm"
+                      onClick={() => handleUpdateBookingStatus(selectedBookingDetail.id, 'CONFIRMED', selectedBookingDetail.status)}
+                    >
+                      <i className="bi bi-check-circle me-1"></i>Xác Nhận Đơn Đặt
+                    </button>
+                  )}
                   {selectedBookingDetail.status === 'CONFIRMED' && (
                     <button
                       className="btn btn-success btn-sm"
-                      onClick={() => handleUpdateBookingStatus(selectedBookingDetail.id, 'COMPLETED')}
+                      onClick={() => handleUpdateBookingStatus(selectedBookingDetail.id, 'COMPLETED', selectedBookingDetail.status)}
                     >
                       Xác Nhận Check-in
                     </button>

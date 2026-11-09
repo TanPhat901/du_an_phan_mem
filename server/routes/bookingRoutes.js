@@ -1,7 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const authMiddleware = require('../middleware/authMiddleware');
 const { pool, isDbConnected } = require('../config/db');
@@ -71,11 +69,13 @@ const mapBookingRow = (b) => ({
   paymentStatus: b.payment_status || 'PENDING',
   status: b.status,
   statusLabel:
-    b.status === 'CONFIRMED'
-      ? 'Đã xác nhận'
-      : b.status === 'CANCELLED'
-        ? 'Đã hủy'
-        : 'Hoàn thành',
+    b.status === 'PENDING'
+      ? 'Chờ chủ sân xác nhận'
+      : b.status === 'CONFIRMED'
+        ? 'Đã xác nhận'
+        : b.status === 'CANCELLED'
+          ? 'Đã hủy'
+          : 'Đã Check-in / Hoàn thành',
   cancelReason: b.cancel_reason || '',
   note: b.note || '',
   ownerPhone: b.owner_phone || '',
@@ -206,17 +206,15 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/bookings - Tạo đơn đặt sân thật (kiểm tra slot trống + chống đặt trùng)
-router.post('/', async (req, res) => {
+// POST /api/bookings - Tạo đơn đặt sân thật (bắt buộc đăng nhập & chờ chủ sân xác nhận)
+router.post('/', authMiddleware, async (req, res) => {
   if (!isDbConnected()) {
     return res.status(503).json({ success: false, message: 'Không thể kết nối cơ sở dữ liệu để đặt sân.' });
   }
 
-  let authUser = null;
-  try {
-    authUser = extractOptionalUser(req);
-  } catch (err) {
-    return res.status(err.status || 401).json({ success: false, message: err.message });
+  const userId = Number(req.user?.userId);
+  if (!Number.isSafeInteger(userId) || userId <= 0) {
+    return res.status(401).json({ success: false, message: 'Vui lòng đăng nhập tài khoản để đặt sân.' });
   }
 
   const {
@@ -379,38 +377,30 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // 5. Xác định user_id (từ JWT nếu đăng nhập, hoặc tài khoản khách theo SĐT)
-    let userId;
-    if (authUser && Number.isSafeInteger(Number(authUser.userId))) {
-      userId = Number(authUser.userId);
-    } else {
-      const guestEmail = `${cleanPhone}@guest.sportsbooking.vn`;
-      const existingGuest = await client.query(
-        'SELECT user_id FROM users WHERE phone = $1 OR LOWER(email) = $2 LIMIT 1',
-        [cleanPhone, guestEmail.toLowerCase()]
-      );
-      if (existingGuest.rowCount > 0) {
-        userId = Number(existingGuest.rows[0].user_id);
-      } else {
-        const randomHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
-        const newGuest = await client.query(
-          `INSERT INTO users (full_name, email, password_hash, phone, role, status)
-           VALUES ($1, $2, $3, $4, 'USER', 'ACTIVE') RETURNING user_id`,
-          [cleanName, guestEmail.toLowerCase(), randomHash, cleanPhone]
-        );
-        userId = Number(newGuest.rows[0].user_id);
-      }
+    // 5. Xác minh tài khoản người đặt trong PostgreSQL
+    const userRes = await client.query(
+      'SELECT user_id, status FROM users WHERE user_id = $1',
+      [userId]
+    );
+    if (userRes.rowCount === 0 || userRes.rows[0].status !== 'ACTIVE') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({
+        success: false,
+        message: 'Tài khoản của bạn không tồn tại hoặc đã bị khóa.'
+      });
     }
 
-    const paymentStatus = cleanPayment.toLowerCase().includes('tại quầy') ? 'PENDING' : 'PAID_ONLINE';
+    const paymentStatus = cleanPayment.toLowerCase().includes('tại quầy')
+      ? 'PENDING'
+      : 'WAITING_CONFIRM';
 
-    // 6. Chèn đơn đặt vào bookings
+    // 6. Chèn đơn đặt vào bookings với trạng thái PENDING (chờ chủ sân xác nhận)
     const bookingRes = await client.query(
       `INSERT INTO bookings (
          user_id, court_id, sub_court_id, booking_date, status, total_amount,
          customer_name, customer_phone, payment_method, payment_status, note
        )
-       VALUES ($1, $2, $3, $4::date, 'CONFIRMED', $5, $6, $7, $8, $9, $10)
+       VALUES ($1, $2, $3, $4::date, 'PENDING', $5, $6, $7, $8, $9, $10)
        RETURNING booking_id, created_at`,
       [
         userId,
@@ -437,8 +427,8 @@ router.post('/', async (req, res) => {
     // 8. Ghi lịch sử trạng thái
     await client.query(
       `INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by, reason)
-       VALUES ($1, NULL, 'CONFIRMED', $2, $3)`,
-      [savedBooking.booking_id, userId, 'Khách hàng đặt sân trực tuyến']
+       VALUES ($1, NULL, 'PENDING', $2, $3)`,
+      [savedBooking.booking_id, userId, 'Khách hàng gửi yêu cầu đặt sân (chờ chủ sân xác nhận)']
     );
 
     await client.query('COMMIT');
@@ -446,7 +436,7 @@ router.post('/', async (req, res) => {
     return res.status(201).json({
       success: true,
       source: 'PostgreSQL Database',
-      message: 'Đặt sân thành công! Lịch chơi của bạn đã được giữ chỗ.',
+      message: 'Đã gửi yêu cầu đặt sân! Vui lòng chờ chủ sân xác nhận.',
       data: {
         id: `BK-${savedBooking.booking_id}`,
         bookingId: Number(savedBooking.booking_id),
@@ -462,8 +452,8 @@ router.post('/', async (req, res) => {
         totalPrice: authoritativePrice,
         paymentMethod: cleanPayment,
         paymentStatus,
-        status: 'CONFIRMED',
-        statusLabel: 'Đã xác nhận',
+        status: 'PENDING',
+        statusLabel: 'Chờ chủ sân xác nhận',
         note: cleanNote || '',
         ownerPhone: courtRow.owner_phone || '',
         bankName: courtRow.bank_name || '',

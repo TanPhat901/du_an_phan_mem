@@ -690,18 +690,31 @@ router.get('/:id/reviews', async (req, res) => {
     );
 
     let canReview = false;
+    let hasConfirmedBooking = false;
+    let hasPendingBooking = false;
     let myReview = null;
 
     if (authUser) {
       const eligibilityRes = await pool.query(
-        `SELECT booking_id
-         FROM bookings
-         WHERE user_id = $1 AND court_id = $2 AND status IN ('CONFIRMED', 'COMPLETED')
-         ORDER BY booking_id DESC
-         LIMIT 1`,
+        `SELECT
+           EXISTS (
+             SELECT 1 FROM bookings
+             WHERE user_id = $1 AND court_id = $2 AND status = 'COMPLETED'
+           ) AS can_review,
+           EXISTS (
+             SELECT 1 FROM bookings
+             WHERE user_id = $1 AND court_id = $2 AND status = 'CONFIRMED'
+           ) AS has_confirmed_booking,
+           EXISTS (
+             SELECT 1 FROM bookings
+             WHERE user_id = $1 AND court_id = $2 AND status = 'PENDING'
+           ) AS has_pending_booking`,
         [authUser.userId, courtId]
       );
-      canReview = eligibilityRes.rowCount > 0;
+      const elig = eligibilityRes.rows[0] || {};
+      canReview = Boolean(elig.can_review);
+      hasConfirmedBooking = Boolean(elig.has_confirmed_booking);
+      hasPendingBooking = Boolean(elig.has_pending_booking);
 
       const foundMine = listRes.rows.find((r) => Number(r.user_id) === authUser.userId);
       if (foundMine) {
@@ -732,6 +745,8 @@ router.get('/:id/reviews', async (req, res) => {
           1: Number(sumRow.star_1 || 0)
         },
         canReview,
+        hasConfirmedBooking,
+        hasPendingBooking,
         myReview,
         reviews: listRes.rows.map((r) => ({
           reviewId: Number(r.review_id),
@@ -752,7 +767,7 @@ router.get('/:id/reviews', async (req, res) => {
   }
 });
 
-// POST /api/courts/:id/reviews - Gửi hoặc cập nhật đánh giá sân (chỉ người đã đặt sân tại cụm sân này)
+// POST /api/courts/:id/reviews - Gửi hoặc cập nhật đánh giá sân (chỉ người đã check-in sân)
 router.post('/:id/reviews', authMiddleware, async (req, res) => {
   const courtId = parseInt(req.params.id, 10);
   if (!Number.isSafeInteger(courtId) || courtId <= 0) {
@@ -785,7 +800,7 @@ router.post('/:id/reviews', authMiddleware, async (req, res) => {
     const bookingRes = await pool.query(
       `SELECT booking_id
        FROM bookings
-       WHERE user_id = $1 AND court_id = $2 AND status IN ('CONFIRMED', 'COMPLETED')
+       WHERE user_id = $1 AND court_id = $2 AND status = 'COMPLETED'
        ORDER BY booking_date DESC, booking_id DESC
        LIMIT 1`,
       [userId, courtId]
@@ -793,7 +808,7 @@ router.post('/:id/reviews', authMiddleware, async (req, res) => {
     if (bookingRes.rowCount === 0) {
       return res.status(403).json({
         success: false,
-        message: 'Bạn cần có ít nhất 1 lịch đặt hợp lệ tại cụm sân này để gửi đánh giá.'
+        message: 'Bạn chỉ có thể gửi đánh giá sau khi đã Check-in sân thành công.'
       });
     }
 

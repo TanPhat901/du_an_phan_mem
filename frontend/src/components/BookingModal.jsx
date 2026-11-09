@@ -5,12 +5,14 @@ import { formatLocalYMD, getStoredToken } from '../utils/vietqr';
 export default function BookingModal({
   court,
   currentUser,
+  onRequireAuth,
   onClose,
   onBookingSuccess,
   onSlotConflict,
   onViewMyBookings
 }) {
   const todayYmd = formatLocalYMD();
+  const isLoggedIn = Boolean(currentUser && getStoredToken());
   const [customerName, setCustomerName] = useState(currentUser?.fullName || '');
   const [phone, setPhone] = useState(currentUser?.phone || '');
   const [date, setDate] = useState(court?.date || todayYmd);
@@ -32,6 +34,13 @@ export default function BookingModal({
 
   const handleBookingSubmit = async (e) => {
     e.preventDefault();
+    const token = getStoredToken();
+    if (!currentUser || !token) {
+      setErrorMsg('Vui lòng đăng nhập tài khoản trước khi đặt sân.');
+      onRequireAuth?.('login');
+      return;
+    }
+
     if (!customerName.trim() || !phone.trim()) {
       setErrorMsg('Vui lòng nhập họ tên và số điện thoại liên hệ.');
       return;
@@ -41,11 +50,10 @@ export default function BookingModal({
     setErrorMsg('');
 
     try {
-      const token = getStoredToken();
-      const headers = { 'Content-Type': 'application/json' };
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      };
 
       const response = await fetch('http://localhost:5000/api/bookings', {
         method: 'POST',
@@ -65,6 +73,10 @@ export default function BookingModal({
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload.success === false) {
+        if (response.status === 401) {
+          setErrorMsg(payload.message || 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+          return;
+        }
         if (response.status === 409) {
           onSlotConflict?.();
         }
@@ -97,8 +109,12 @@ export default function BookingModal({
               style={{ objectFit: 'cover', opacity: 0.35 }}
             />
             <div className="position-absolute bottom-0 start-0 p-3 text-white">
-              <span className="badge bg-success mb-1">
-                {confirmedBooking ? 'ĐẶT SÂN THÀNH CÔNG' : court.category}
+              <span className={`badge ${confirmedBooking ? (confirmedBooking.status === 'PENDING' ? 'bg-warning text-dark' : 'bg-success') : 'bg-success'} mb-1`}>
+                {confirmedBooking
+                  ? confirmedBooking.status === 'PENDING'
+                    ? 'ĐÃ GỬI YÊU CẦU • CHỜ XÁC NHẬN'
+                    : 'ĐẶT SÂN THÀNH CÔNG'
+                  : court.category}
               </span>
               <h5 className="modal-title fw-bold text-white mb-0 text-truncate" style={{ maxWidth: '420px' }}>
                 {court.name}
@@ -115,17 +131,51 @@ export default function BookingModal({
             ></button>
           </div>
 
-          {confirmedBooking ? (
+          {!isLoggedIn ? (
+            <div className="p-4 text-center">
+              <div className="mb-3 text-warning">
+                <i className="bi bi-person-lock fs-1"></i>
+              </div>
+              <h6 className="fw-bold text-brand-dark">Yêu cầu đăng nhập để đặt sân</h6>
+              <p className="text-muted small mb-4">
+                Vui lòng đăng nhập tài khoản SportsBooking trước khi gửi yêu cầu đặt sân.
+              </p>
+              <div className="d-flex gap-2 justify-content-center">
+                <button type="button" className="btn btn-outline-secondary" onClick={onClose}>
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-brand px-4"
+                  onClick={() => onRequireAuth?.('login')}
+                >
+                  <i className="bi bi-box-arrow-in-right me-1"></i>Đăng nhập ngay
+                </button>
+              </div>
+            </div>
+          ) : confirmedBooking ? (
             <div className="p-4">
-              <div className="alert alert-success border-0 d-flex align-items-center gap-2 mb-3">
-                <i className="bi bi-check-circle-fill fs-4"></i>
-                <div>
-                  <div className="fw-bold">Lịch chơi của bạn đã được giữ chỗ thành công!</div>
-                  <div className="small">
-                    Mã đặt chỗ <strong>{confirmedBooking.id}</strong> đã được lưu vào hệ thống.
+              {confirmedBooking.status === 'PENDING' ? (
+                <div className="alert alert-warning border-0 d-flex align-items-center gap-2 mb-3">
+                  <i className="bi bi-hourglass-split fs-4 text-warning-emphasis"></i>
+                  <div>
+                    <div className="fw-bold">Đã gửi yêu cầu đặt sân! Đang chờ chủ sân xác nhận.</div>
+                    <div className="small">
+                      Mã đặt chỗ <strong>{confirmedBooking.id}</strong> đã được giữ chỗ tạm thời. Chủ sân sẽ duyệt đơn và xác nhận lịch cho bạn sớm nhất.
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="alert alert-success border-0 d-flex align-items-center gap-2 mb-3">
+                  <i className="bi bi-check-circle-fill fs-4"></i>
+                  <div>
+                    <div className="fw-bold">Lịch chơi của bạn đã được giữ chỗ thành công!</div>
+                    <div className="small">
+                      Mã đặt chỗ <strong>{confirmedBooking.id}</strong> đã được lưu vào hệ thống.
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <TicketBarcode booking={confirmedBooking} />
 
@@ -249,7 +299,7 @@ export default function BookingModal({
                 <div>
                   <span className="small text-muted d-block">Tổng thanh toán (1 slot):</span>
                   <span className="small text-success fw-semibold">
-                    {court.subCourtName ? `Sân: ${court.subCourtName}` : 'Giữ chỗ tức thì trên hệ thống'}
+                    {court.subCourtName ? `Sân: ${court.subCourtName}` : 'Chủ sân sẽ xác nhận yêu cầu đặt chỗ'}
                   </span>
                 </div>
                 <div className="text-end">
@@ -265,7 +315,7 @@ export default function BookingModal({
                   Hủy bỏ
                 </button>
                 <button type="submit" className="btn btn-brand w-50" disabled={submitting}>
-                  {submitting ? 'Đang xử lý...' : 'Xác nhận đặt sân'}
+                  {submitting ? 'Đang gửi...' : 'Gửi yêu cầu đặt sân'}
                 </button>
               </div>
             </form>

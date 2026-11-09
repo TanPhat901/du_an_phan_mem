@@ -125,6 +125,7 @@ export default function App() {
 
   // Modals & Detail state
   const [selectedCourtDetail, setSelectedCourtDetail] = useState(null);
+  const [postAuthReturnCourt, setPostAuthReturnCourt] = useState(null);
   const [detailScrollToReviews, setDetailScrollToReviews] = useState(false);
   const [selectedCourtForBooking, setSelectedCourtForBooking] = useState(null);
   const [showPartnerModal, setShowPartnerModal] = useState(false);
@@ -303,7 +304,7 @@ export default function App() {
     const token = getStoredToken();
     if (!currentUser || !token) {
       showNotification('Vui lòng đăng nhập tài khoản để lưu sân yêu thích.');
-      setCurrentView('login');
+      openAuthView('login', currentView === 'court-detail' ? selectedCourtDetail : null);
       return;
     }
 
@@ -391,7 +392,9 @@ export default function App() {
   const handleBookingSuccess = (newBooking) => {
     setBookings((prev) => [newBooking, ...prev.filter((b) => b.id !== newBooking.id)]);
     setAvailabilityRefreshKey((k) => k + 1);
-    showNotification(`🎉 Đặt sân thành công! Mã đặt chỗ của bạn là: ${newBooking.id}`);
+    showNotification(
+      `⏳ Đã gửi yêu cầu đặt sân (${newBooking.id})! Vui lòng chờ chủ sân xác nhận.`
+    );
   };
 
   const handleCancelSuccess = (bookingId, reason) => {
@@ -406,6 +409,11 @@ export default function App() {
     showNotification(`Đã hủy đơn đặt sân ${bookingId}.`);
   };
 
+  const openAuthView = (mode, returnCourt = null) => {
+    setPostAuthReturnCourt(returnCourt);
+    setCurrentView(mode);
+  };
+
   const handleAuthSuccess = (userData, remember = true) => {
     if (!userData?.token) {
       showNotification('Không thể xác thực tài khoản. Vui lòng đăng nhập lại.');
@@ -418,11 +426,17 @@ export default function App() {
     setCurrentUser(user);
     localStorage.setItem('sportsbooking_user', JSON.stringify(user));
     if (userData.role === 'OWNER') {
+      setPostAuthReturnCourt(null);
       showNotification(`🎉 Chào mừng Đối tác Chủ sân ${userData.fullName}! Chuyển đến Giao diện Quản lý Chủ Sân.`);
       setCurrentView('owner-dashboard');
       return;
-    } else {
-      showNotification(`Xin chào ${userData.fullName || 'bạn'}! Đăng nhập thành công.`);
+    }
+    showNotification(`Xin chào ${userData.fullName || 'bạn'}! Đăng nhập thành công.`);
+    if (postAuthReturnCourt) {
+      setSelectedCourtDetail(postAuthReturnCourt);
+      setPostAuthReturnCourt(null);
+      setCurrentView('court-detail');
+      return;
     }
     setCurrentView('home');
   };
@@ -530,7 +544,10 @@ export default function App() {
       <AuthPage
         initialMode={currentView === 'login' ? 'login' : 'register'}
         initialRole={currentView === 'register-owner' ? 'OWNER' : 'USER'}
-        onBackToHome={() => setCurrentView('home')}
+        onBackToHome={() => {
+          setPostAuthReturnCourt(null);
+          setCurrentView('home');
+        }}
         onAuthSuccess={handleAuthSuccess}
       />
     );
@@ -587,11 +604,16 @@ export default function App() {
           isFavorite={isDetailFav}
           scrollToReviews={detailScrollToReviews}
           onToggleFavorite={handleToggleFavorite}
-          onRequireAuth={(mode) => setCurrentView(mode)}
+          onRequireAuth={(mode) => openAuthView(mode, selectedCourtDetail)}
           onReviewUpdated={handleReviewUpdated}
           onNotify={showNotification}
           onBackToHome={() => navigateToHome('home')}
           onProceedBooking={(bookingPlan) => {
+            if (!currentUser || !getStoredToken()) {
+              showNotification('Vui lòng đăng nhập tài khoản để đặt sân.');
+              openAuthView('login', selectedCourtDetail);
+              return;
+            }
             setSelectedCourtForBooking({
               id: bookingPlan.courtId || selectedCourtDetail?.id || 1,
               name: bookingPlan.courtName,
@@ -614,7 +636,7 @@ export default function App() {
         />
 
         <Footer
-          onOpenAuth={(mode) => setCurrentView(mode)}
+          onOpenAuth={(mode) => openAuthView(mode)}
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
         />
 
@@ -622,6 +644,10 @@ export default function App() {
           <BookingModal
             court={selectedCourtForBooking}
             currentUser={currentUser}
+            onRequireAuth={(mode) => {
+              setSelectedCourtForBooking(null);
+              openAuthView(mode, selectedCourtDetail);
+            }}
             onClose={() => setSelectedCourtForBooking(null)}
             onBookingSuccess={handleBookingSuccess}
             onSlotConflict={() => setAvailabilityRefreshKey((k) => k + 1)}
@@ -634,6 +660,10 @@ export default function App() {
             bookings={bookings}
             loading={bookingsLoading}
             currentUser={currentUser}
+            onRequireAuth={(mode) => {
+              setShowMyBookings(false);
+              openAuthView(mode, selectedCourtDetail);
+            }}
             onRefreshBookings={loadMyBookings}
             onLookupByPhone={lookupBookingsByPhone}
             onCancelSuccess={handleCancelSuccess}
@@ -737,6 +767,10 @@ export default function App() {
         <BookingModal
           court={selectedCourtForBooking}
           currentUser={currentUser}
+          onRequireAuth={(mode) => {
+            setSelectedCourtForBooking(null);
+            openAuthView(mode);
+          }}
           onClose={() => setSelectedCourtForBooking(null)}
           onBookingSuccess={handleBookingSuccess}
           onSlotConflict={() => setAvailabilityRefreshKey((k) => k + 1)}
@@ -756,6 +790,10 @@ export default function App() {
           bookings={bookings}
           loading={bookingsLoading}
           currentUser={currentUser}
+          onRequireAuth={(mode) => {
+            setShowMyBookings(false);
+            openAuthView(mode);
+          }}
           onRefreshBookings={loadMyBookings}
           onLookupByPhone={lookupBookingsByPhone}
           onCancelSuccess={handleCancelSuccess}

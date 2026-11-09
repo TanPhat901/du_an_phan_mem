@@ -24,7 +24,7 @@ EXCEPTION
 END $$;
 
 DO $$ BEGIN
-    CREATE TYPE booking_status_enum AS ENUM ('CONFIRMED', 'CANCELLED', 'COMPLETED');
+    CREATE TYPE booking_status_enum AS ENUM ('PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED');
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;

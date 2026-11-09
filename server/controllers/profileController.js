@@ -42,7 +42,7 @@ const getMyProfile = async (req, res) => {
     const statsRes = await pool.query(
       `SELECT
          (SELECT COUNT(*)::int FROM bookings WHERE user_id = $1) AS total_bookings,
-         (SELECT COUNT(*)::int FROM bookings WHERE user_id = $1 AND status = 'CONFIRMED') AS upcoming_bookings,
+         (SELECT COUNT(*)::int FROM bookings WHERE user_id = $1 AND status IN ('PENDING', 'CONFIRMED')) AS upcoming_bookings,
          (SELECT COUNT(*)::int FROM bookings WHERE user_id = $1 AND status = 'COMPLETED') AS completed_bookings,
          (SELECT COUNT(*)::int FROM favorite_courts WHERE user_id = $1) AS favorites_count,
          (SELECT COUNT(*)::int FROM court_reviews WHERE user_id = $1) AS reviews_count`,

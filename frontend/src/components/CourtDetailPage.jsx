@@ -88,6 +88,8 @@ export default function CourtDetailPage({
     reviewCount: Number(court?.reviewCount || 0),
     breakdown: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
     canReview: false,
+    hasConfirmedBooking: false,
+    hasPendingBooking: false,
     myReview: null,
     reviews: []
   });
@@ -176,6 +178,8 @@ export default function CourtDetailPage({
         reviewCount: Number(d.reviewCount || 0),
         breakdown: d.breakdown || { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
         canReview: Boolean(d.canReview),
+        hasConfirmedBooking: Boolean(d.hasConfirmedBooking),
+        hasPendingBooking: Boolean(d.hasPendingBooking),
         myReview: d.myReview || null,
         reviews: Array.isArray(d.reviews) ? d.reviews : []
       });
@@ -238,6 +242,11 @@ export default function CourtDetailPage({
   }, [loadAvailability, availabilityRefreshKey]);
 
   const handleBooking = () => {
+    if (!currentUser || !getStoredToken()) {
+      onNotify?.('Vui lòng đăng nhập tài khoản để tiếp tục đặt sân.');
+      onRequireAuth?.('login');
+      return;
+    }
     if (!selectedSlot || selectedSlot.status !== 'available') return;
     onProceedBooking({
       courtId,
@@ -631,7 +640,7 @@ export default function CourtDetailPage({
                   <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <div className="small text-muted">
                       <i className="bi bi-chat-square-quote text-brand me-2"></i>
-                      Đăng nhập để gửi đánh giá sau khi trải nghiệm sân.
+                      Đăng nhập và hoàn tất Check-in sân để mở quyền viết đánh giá.
                     </div>
                     <button
                       type="button"
@@ -642,9 +651,15 @@ export default function CourtDetailPage({
                     </button>
                   </div>
                 ) : !reviewsState.canReview ? (
-                  <div className="small text-muted d-flex align-items-center gap-2">
-                    <i className="bi bi-info-circle text-brand fs-5"></i>
-                    <span>Bạn cần đặt sân tại cơ sở này ít nhất 1 lần để mở quyền viết đánh giá xác thực.</span>
+                  <div className="small text-muted d-flex align-items-start gap-2">
+                    <i className="bi bi-info-circle text-brand fs-5 flex-shrink-0"></i>
+                    <span>
+                      {reviewsState.hasConfirmedBooking
+                        ? 'Đơn đặt sân của bạn đã được chủ sân xác nhận. Sau khi đến sân và hoàn tất Check-in, bạn sẽ mở khóa quyền viết đánh giá.'
+                        : reviewsState.hasPendingBooking
+                          ? 'Yêu cầu đặt sân của bạn đang chờ chủ sân xác nhận. Bạn có thể gửi đánh giá sau khi Check-in tại sân thành công.'
+                          : 'Bạn chỉ có thể viết đánh giá sau khi đã đặt sân và hoàn tất Check-in tại cơ sở này.'}
+                    </span>
                   </div>
                 ) : (
                   <form onSubmit={handleReviewSubmit}>
@@ -710,7 +725,7 @@ export default function CourtDetailPage({
               ) : reviewsState.reviews.length === 0 ? (
                 <div className="text-center py-4 text-muted small border rounded-3 bg-white">
                   <i className="bi bi-stars fs-4 d-block mb-1 text-warning"></i>
-                  Chưa có đánh giá nào cho cụm sân này. Hãy là người đầu tiên chia sẻ trải nghiệm sau khi đặt sân!
+                  Chưa có đánh giá nào cho cụm sân này. Hãy là người đầu tiên chia sẻ trải nghiệm sau khi Check-in sân!
                 </div>
               ) : (
                 <div className="d-flex flex-column gap-3">
@@ -734,7 +749,7 @@ export default function CourtDetailPage({
                               )}
                               {rv.verifiedBooking && (
                                 <span className="badge bg-primary-subtle text-primary" style={{ fontSize: '0.65rem' }}>
-                                  <i className="bi bi-patch-check-fill me-1"></i>Đã đặt sân
+                                  <i className="bi bi-patch-check-fill me-1"></i>Đã Check-in
                                 </span>
                               )}
                             </div>
@@ -896,26 +911,42 @@ export default function CourtDetailPage({
                   {Number(activePrice).toLocaleString('vi-VN')}đ
                 </div>
 
+                {!currentUser && (
+                  <div className="alert alert-warning py-2 px-3 small mb-2 d-flex align-items-center gap-2 border-0">
+                    <i className="bi bi-person-lock fs-5 flex-shrink-0"></i>
+                    <span>Bạn cần đăng nhập tài khoản trước khi tiến hành đặt sân.</span>
+                  </div>
+                )}
+
                 <button
                   type="button"
-                  disabled={!selectedSlot || slotsLoading}
+                  disabled={slotsLoading || (Boolean(currentUser) && !selectedSlot)}
                   className="btn btn-brand w-100 py-3 fw-bold fs-6 d-flex align-items-center justify-content-center gap-2 shadow-sm rounded-3"
                   onClick={handleBooking}
                 >
-                  <span>{selectedSlot ? 'Tiến hành Đặt sân ngay' : 'Vui lòng chọn khung giờ trống'}</span>
-                  <i className="bi bi-arrow-right"></i>
+                  {!currentUser ? (
+                    <>
+                      <i className="bi bi-box-arrow-in-right"></i>
+                      <span>Đăng nhập để Đặt sân ngay</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{selectedSlot ? 'Tiến hành Đặt sân ngay' : 'Vui lòng chọn khung giờ trống'}</span>
+                      <i className="bi bi-arrow-right"></i>
+                    </>
+                  )}
                 </button>
               </div>
 
               {/* Guarantees */}
               <div className="text-center text-muted small" style={{ fontSize: '0.75rem', lineHeight: '1.4' }}>
                 <div className="mb-1">
-                  <i className="bi bi-shield-check text-success me-1"></i>
-                  Kiểm tra lịch thời gian thực • Chống trùng lịch 100%
+                  <i className="bi bi-hourglass-split text-warning me-1"></i>
+                  Yêu cầu đặt sân sẽ được gửi tới chủ sân xác nhận
                 </div>
                 <div>
-                  <i className="bi bi-clock-history text-success me-1"></i>
-                  Hỗ trợ hủy lịch nhanh trong mục Lịch đặt của tôi
+                  <i className="bi bi-shield-check text-success me-1"></i>
+                  Kiểm tra lịch thời gian thực • Chống trùng lịch 100%
                 </div>
               </div>
             </div>
