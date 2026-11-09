@@ -12,67 +12,60 @@ import AuthPage from './components/AuthPage';
 import CourtDetailPage from './components/CourtDetailPage';
 import OwnerDashboard from './components/OwnerDashboard';
 import ProfilePage from './components/ProfilePage';
-
-const formatTodayLocal = () => {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
+import { formatLocalYMD, getStoredToken } from './utils/vietqr';
 
 // Initial fallback courts identical to backend JSON & screenshot
 const INITIAL_COURTS = [
   {
     id: 1,
-    name: "The Yard Padel Club Thảo Điền",
-    category: "PADEL & PICKLEBALL",
-    sportType: "pickleball",
-    rating: 4.9,
-    ratingFormatted: "4.9",
-    reviewCount: 128,
-    address: "Nguyễn Văn Hưởng, Phường Thảo Điền, TP. Thủ Đức",
-    city: "TP. Hồ Chí Minh",
+    name: 'The Yard Padel Club Thảo Điền',
+    category: 'PADEL & PICKLEBALL',
+    sportType: 'pickleball',
+    rating: 0,
+    ratingFormatted: 'Mới',
+    reviewCount: 0,
+    address: 'Nguyễn Văn Hưởng, Phường Thảo Điền, TP. Thủ Đức',
+    city: 'TP. Hồ Chí Minh',
     pricePerHour: 280000,
-    priceFormatted: "280.000đ",
-    imageUrl: "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&q=80",
-    amenities: ["Bãi đỗ ô tô", "Phòng tắm nóng lạnh", "Café / Quầy nước"],
+    priceFormatted: '280.000đ',
+    imageUrl: 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&q=80',
+    amenities: ['Bãi đỗ ô tô', 'Phòng tắm nóng lạnh', 'Café / Quầy nước'],
     featured: true,
-    availableSlots: ["06:00 - 07:00", "07:00 - 08:00", "17:00 - 18:00", "18:00 - 19:00", "19:00 - 20:00", "20:00 - 21:00"]
+    availableSlots: ['06:00 - 07:00', '07:00 - 08:00', '17:00 - 18:00', '18:00 - 19:00', '19:00 - 20:00', '20:00 - 21:00']
   },
   {
     id: 2,
-    name: "Trung Tâm Celadon Sport Club",
-    category: "BÓNG ĐÁ & TENNIS",
-    sportType: "football",
-    rating: 4.8,
-    ratingFormatted: "4.8",
-    reviewCount: 94,
-    address: "Đường N1, Sơn Kỳ, Tân Phú, TP. Hồ Chí Minh",
-    city: "TP. Hồ Chí Minh",
+    name: 'Trung Tâm Celadon Sport Club',
+    category: 'BÓNG ĐÁ & TENNIS',
+    sportType: 'football',
+    rating: 0,
+    ratingFormatted: 'Mới',
+    reviewCount: 0,
+    address: 'Đường N1, Sơn Kỳ, Tân Phú, TP. Hồ Chí Minh',
+    city: 'TP. Hồ Chí Minh',
     pricePerHour: 190000,
-    priceFormatted: "190.000đ",
-    imageUrl: "https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80",
-    amenities: ["Đèn Led ban đêm", "Khán đài có mái", "Bảo vệ 24/7"],
+    priceFormatted: '190.000đ',
+    imageUrl: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
+    amenities: ['Đèn Led ban đêm', 'Khán đài có mái', 'Bảo vệ 24/7'],
     featured: true,
-    availableSlots: ["07:00 - 08:30", "16:00 - 17:30", "18:00 - 19:30", "19:30 - 21:00", "21:00 - 22:30"]
+    availableSlots: ['07:00 - 08:30', '16:00 - 17:30', '18:00 - 19:30', '19:30 - 21:00', '21:00 - 22:30']
   },
   {
     id: 3,
-    name: "Sky Garden Arena Phú Mỹ Hưng",
-    category: "CẦU LÔNG TRONG NHÀ",
-    sportType: "badminton",
-    rating: 4.95,
-    ratingFormatted: "4.95",
-    reviewCount: 210,
-    address: "Phạm Văn Nghị, Tân Phong, Quận 7, TP. HCM",
-    city: "TP. Hồ Chí Minh",
+    name: 'Sky Garden Arena Phú Mỹ Hưng',
+    category: 'CẦU LÔNG TRONG NHÀ',
+    sportType: 'badminton',
+    rating: 0,
+    ratingFormatted: 'Mới',
+    reviewCount: 0,
+    address: 'Phạm Văn Nghị, Tân Phong, Quận 7, TP. HCM',
+    city: 'TP. Hồ Chí Minh',
     pricePerHour: 140000,
-    priceFormatted: "140.000đ",
-    imageUrl: "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=800&q=80",
-    amenities: ["Máy lạnh công suất lớn", "Thảm Yonex chuẩn thi đấu"],
+    priceFormatted: '140.000đ',
+    imageUrl: 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=800&q=80',
+    amenities: ['Máy lạnh công suất lớn', 'Thảm Yonex chuẩn thi đấu'],
     featured: true,
-    availableSlots: ["06:00 - 07:00", "08:00 - 09:00", "16:00 - 17:00", "17:00 - 18:00", "19:00 - 20:00"]
+    availableSlots: ['06:00 - 07:00', '08:00 - 09:00', '16:00 - 17:00', '17:00 - 18:00', '19:00 - 20:00']
   }
 ];
 
@@ -83,7 +76,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    const token = localStorage.getItem('sportsbooking_token') || sessionStorage.getItem('sportsbooking_token');
+    const token = getStoredToken();
     if (!token) {
       localStorage.removeItem('sportsbooking_user');
       setAuthReady(true);
@@ -91,18 +84,24 @@ export default function App() {
     }
     fetch('http://localhost:5000/api/auth/me', {
       headers: { Authorization: `Bearer ${token}` }
-    }).then(async (res) => {
-      const data = await res.json();
-      if (!res.ok || !data.success || !data.data) throw new Error('Invalid session');
-      if (!cancelled) setCurrentUser(data.data);
-    }).catch(() => {
-      // Không coi thông tin lưu trên trình duyệt là phiên đăng nhập hợp lệ.
-      if (!cancelled) {
-        setCurrentUser(null);
-        localStorage.removeItem('sportsbooking_user');
-      }
-    }).finally(() => { if (!cancelled) setAuthReady(true); });
-    return () => { cancelled = true; };
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok || !data.success || !data.data) throw new Error('Invalid session');
+        if (!cancelled) setCurrentUser(data.data);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCurrentUser(null);
+          localStorage.removeItem('sportsbooking_user');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAuthReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const [courts, setCourts] = useState(INITIAL_COURTS);
@@ -112,13 +111,21 @@ export default function App() {
 
   // Search & Filter state
   const [keyword, setKeyword] = useState('');
-  const [selectedCity, setSelectedCity] = useState('TP. Hồ Chí Minh');
-  const [playDate, setPlayDate] = useState(formatTodayLocal);
+  const [selectedCity, setSelectedCity] = useState('');
+  const [playDate, setPlayDate] = useState(() => formatLocalYMD());
   const [selectedCategory, setSelectedCategory] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
+  const [sortBy, setSortBy] = useState('featured');
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [filterRefreshNonce, setFilterRefreshNonce] = useState(0);
 
-  // Modals state
+  // Favorites state
+  const [favoriteCourtIds, setFavoriteCourtIds] = useState([]);
+
+  // Modals & Detail state
   const [selectedCourtDetail, setSelectedCourtDetail] = useState(null);
+  const [detailScrollToReviews, setDetailScrollToReviews] = useState(false);
   const [selectedCourtForBooking, setSelectedCourtForBooking] = useState(null);
   const [showPartnerModal, setShowPartnerModal] = useState(false);
   const [showMyBookings, setShowMyBookings] = useState(false);
@@ -129,8 +136,34 @@ export default function App() {
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [availabilityRefreshKey, setAvailabilityRefreshKey] = useState(0);
 
+  const showNotification = useCallback((msg) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage('');
+    }, 4500);
+  }, []);
+
+  const loadFavorites = useCallback(async () => {
+    const token = getStoredToken();
+    if (!token) {
+      setFavoriteCourtIds([]);
+      return;
+    }
+    try {
+      const res = await fetch('http://localhost:5000/api/courts/favorites/my', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success && Array.isArray(json.data)) {
+        setFavoriteCourtIds(json.data.map((c) => Number(c.id)));
+      }
+    } catch {
+      // Ignore temporary network issue
+    }
+  }, []);
+
   const loadMyBookings = useCallback(async () => {
-    const token = localStorage.getItem('sportsbooking_token') || sessionStorage.getItem('sportsbooking_token');
+    const token = getStoredToken();
     if (!token) {
       setBookings([]);
       return;
@@ -145,7 +178,7 @@ export default function App() {
         setBookings(json.data);
       }
     } catch {
-      // Bỏ qua lỗi mạng tạm thời
+      // Ignore temporary network issue
     } finally {
       setBookingsLoading(false);
     }
@@ -171,10 +204,13 @@ export default function App() {
   useEffect(() => {
     if (currentUser) {
       loadMyBookings();
+      loadFavorites();
     } else {
       setBookings([]);
+      setFavoriteCourtIds([]);
+      setFavoritesOnly(false);
     }
-  }, [currentUser, loadMyBookings]);
+  }, [currentUser, loadMyBookings, loadFavorites]);
 
   useEffect(() => {
     if (showMyBookings && currentUser) {
@@ -183,7 +219,7 @@ export default function App() {
   }, [showMyBookings, currentUser, loadMyBookings]);
 
   // Fetch courts from backend API
-  const fetchCourts = async () => {
+  const fetchCourts = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -191,8 +227,15 @@ export default function App() {
       if (selectedCity) params.append('city', selectedCity);
       if (selectedCategory) params.append('category', selectedCategory);
       if (maxPrice) params.append('maxPrice', maxPrice);
+      if (playDate) params.append('date', playDate);
+      if (sortBy) params.append('sort', sortBy);
+      if (onlyAvailable) params.append('onlyAvailable', 'true');
+      if (favoritesOnly) params.append('favoritesOnly', 'true');
 
-      const res = await fetch(`http://localhost:5000/api/courts?${params.toString()}`);
+      const token = getStoredToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const res = await fetch(`http://localhost:5000/api/courts?${params.toString()}`, { headers });
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.data) {
@@ -206,28 +249,137 @@ export default function App() {
       let filtered = [...INITIAL_COURTS];
       if (keyword) {
         const kw = keyword.toLowerCase();
-        filtered = filtered.filter(c => c.name.toLowerCase().includes(kw) || c.category.toLowerCase().includes(kw));
+        filtered = filtered.filter((c) => c.name.toLowerCase().includes(kw) || c.category.toLowerCase().includes(kw));
       }
       if (selectedCity) {
-        filtered = filtered.filter(c => c.city.toLowerCase().includes(selectedCity.toLowerCase()));
+        filtered = filtered.filter((c) => c.city.toLowerCase().includes(selectedCity.toLowerCase()));
       }
       if (selectedCategory) {
-        filtered = filtered.filter(c => c.category.toLowerCase().includes(selectedCategory.toLowerCase()));
+        filtered = filtered.filter((c) => c.category.toLowerCase().includes(selectedCategory.toLowerCase()));
       }
       if (maxPrice) {
-        filtered = filtered.filter(c => c.pricePerHour <= parseInt(maxPrice, 10));
+        filtered = filtered.filter((c) => c.pricePerHour <= parseInt(maxPrice, 10));
       }
       setCourts(filtered);
     } finally {
       setLoading(false);
     }
-  };
+  }, [keyword, selectedCity, selectedCategory, maxPrice, playDate, sortBy, onlyAvailable, favoritesOnly]);
 
   useEffect(() => {
     if (currentView === 'home') {
       fetchCourts();
     }
-  }, [selectedCategory, selectedCity, currentView]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedCategory,
+    selectedCity,
+    playDate,
+    sortBy,
+    onlyAvailable,
+    favoritesOnly,
+    currentView,
+    availabilityRefreshKey,
+    filterRefreshNonce,
+    currentUser?.id
+  ]);
+
+  const handleResetFilters = () => {
+    setKeyword('');
+    setSelectedCity('');
+    setSelectedCategory('');
+    setMaxPrice('');
+    setSortBy('featured');
+    setOnlyAvailable(false);
+    setFavoritesOnly(false);
+    setPlayDate(formatLocalYMD());
+    setFilterRefreshNonce((n) => n + 1);
+  };
+
+  const handleToggleFavorite = async (courtObj) => {
+    const cId = Number(courtObj?.id || courtObj);
+    if (!Number.isSafeInteger(cId) || cId <= 0) return;
+
+    const token = getStoredToken();
+    if (!currentUser || !token) {
+      showNotification('Vui lòng đăng nhập tài khoản để lưu sân yêu thích.');
+      setCurrentView('login');
+      return;
+    }
+
+    const currentlySaved = favoriteCourtIds.includes(cId);
+    const method = currentlySaved ? 'DELETE' : 'POST';
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/courts/${cId}/favorite`, {
+        method,
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Không thể cập nhật sân yêu thích.');
+      }
+
+      const nextSaved = Boolean(json.data?.isFavorite);
+      setFavoriteCourtIds((prev) =>
+        nextSaved ? Array.from(new Set([...prev, cId])) : prev.filter((id) => id !== cId)
+      );
+      setCourts((prev) =>
+        prev.map((c) =>
+          Number(c.id) === cId
+            ? {
+                ...c,
+                isFavorite: nextSaved,
+                favoritesCount: Number(json.data?.favoritesCount ?? c.favoritesCount ?? 0)
+              }
+            : c
+        )
+      );
+      setSelectedCourtDetail((prev) =>
+        prev && Number(prev.id) === cId
+          ? {
+              ...prev,
+              isFavorite: nextSaved,
+              favoritesCount: Number(json.data?.favoritesCount ?? prev.favoritesCount ?? 0)
+            }
+          : prev
+      );
+      showNotification(nextSaved ? 'Đã thêm vào danh sách sân yêu thích ❤️' : 'Đã bỏ khỏi danh sách sân yêu thích.');
+    } catch (err) {
+      showNotification(err.message);
+    }
+  };
+
+  const openCourtById = (courtOrId, { focusReviews = false } = {}) => {
+    const targetId = Number(courtOrId?.id || courtOrId);
+    const found =
+      (typeof courtOrId === 'object' && courtOrId !== null ? courtOrId : null) ||
+      courts.find((c) => Number(c.id) === targetId) ||
+      { id: targetId };
+
+    setSelectedCourtDetail(found);
+    setDetailScrollToReviews(focusReviews);
+    setCurrentView('court-detail');
+    if (!focusReviews) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleReviewUpdated = (courtId, avgRating, reviewCount) => {
+    setCourts((prev) =>
+      prev.map((c) =>
+        Number(c.id) === Number(courtId)
+          ? {
+              ...c,
+              rating: avgRating,
+              ratingFormatted: reviewCount > 0 ? Number(avgRating).toFixed(1) : 'Mới',
+              reviewCount
+            }
+          : c
+      )
+    );
+    loadMyBookings();
+  };
 
   const handleTabChange = (tab) => {
     setActiveSearchTab(tab);
@@ -236,28 +388,21 @@ export default function App() {
     }
   };
 
-  const showNotification = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage('');
-    }, 4500);
-  };
-
   const handleBookingSuccess = (newBooking) => {
-    setBookings(prev => [newBooking, ...prev.filter(b => b.id !== newBooking.id)]);
-    setAvailabilityRefreshKey(k => k + 1);
+    setBookings((prev) => [newBooking, ...prev.filter((b) => b.id !== newBooking.id)]);
+    setAvailabilityRefreshKey((k) => k + 1);
     showNotification(`🎉 Đặt sân thành công! Mã đặt chỗ của bạn là: ${newBooking.id}`);
   };
 
   const handleCancelSuccess = (bookingId, reason) => {
-    setBookings(prev =>
-      prev.map(b =>
+    setBookings((prev) =>
+      prev.map((b) =>
         b.id === bookingId
           ? { ...b, status: 'CANCELLED', statusLabel: 'Đã hủy', cancelReason: reason }
           : b
       )
     );
-    setAvailabilityRefreshKey(k => k + 1);
+    setAvailabilityRefreshKey((k) => k + 1);
     showNotification(`Đã hủy đơn đặt sân ${bookingId}.`);
   };
 
@@ -285,6 +430,8 @@ export default function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     setBookings([]);
+    setFavoriteCourtIds([]);
+    setFavoritesOnly(false);
     localStorage.removeItem('sportsbooking_user');
     localStorage.removeItem('sportsbooking_token');
     sessionStorage.removeItem('sportsbooking_token');
@@ -292,12 +439,13 @@ export default function App() {
   };
 
   const handleProfileUpdated = (user) => {
-    setCurrentUser(prev => ({ ...prev, ...user }));
+    setCurrentUser((prev) => ({ ...prev, ...user }));
     localStorage.setItem('sportsbooking_user', JSON.stringify({ ...currentUser, ...user }));
   };
 
   const navigateToHome = (targetTab = 'home') => {
     setCurrentView('home');
+    setDetailScrollToReviews(false);
     setActiveTab(targetTab === 'search' ? 'search' : 'home');
     if (targetTab === 'search') {
       setTimeout(() => {
@@ -317,6 +465,17 @@ export default function App() {
   if (currentView === 'profile') {
     return (
       <div className="min-vh-100 d-flex flex-column bg-white">
+        {toastMessage && (
+          <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1100 }}>
+            <div className="alert alert-success shadow-lg border-0 d-flex align-items-center gap-2 mb-0 py-3 px-4 rounded-3 text-dark">
+              <i className="bi bi-check-circle-fill text-success fs-5"></i>
+              <div>
+                <strong>Thông báo:</strong> {toastMessage}
+              </div>
+              <button type="button" className="btn-close ms-auto" onClick={() => setToastMessage('')}></button>
+            </div>
+          </div>
+        )}
         <Navbar
           onOpenAuth={(mode) => setCurrentView(mode)}
           onOpenMyBookings={() => setShowMyBookings(true)}
@@ -327,14 +486,22 @@ export default function App() {
           setActiveTab={setActiveTab}
           activeView="profile"
           currentUser={currentUser}
-          onLogout={() => { handleLogout(); setCurrentView('home'); }}
+          onLogout={() => {
+            handleLogout();
+            setCurrentView('home');
+          }}
         />
         <ProfilePage
           currentUser={currentUser}
           onProfileUpdated={handleProfileUpdated}
           onBackToHome={() => setCurrentView('home')}
           onOpenMyBookings={() => setShowMyBookings(true)}
-          onLogout={() => { handleLogout(); setCurrentView('home'); }}
+          onOpenCourt={(fav) => openCourtById(fav)}
+          onToggleFavorite={handleToggleFavorite}
+          onLogout={() => {
+            handleLogout();
+            setCurrentView('home');
+          }}
         />
         <Footer
           onOpenAuth={(mode) => setCurrentView(mode)}
@@ -348,6 +515,8 @@ export default function App() {
             onRefreshBookings={loadMyBookings}
             onLookupByPhone={lookupBookingsByPhone}
             onCancelSuccess={handleCancelSuccess}
+            onRebookCourt={(cId) => openCourtById(cId)}
+            onReviewCourt={(cId) => openCourtById(cId, { focusReviews: true })}
             onClose={() => setShowMyBookings(false)}
           />
         )}
@@ -382,6 +551,7 @@ export default function App() {
 
   // If in Court Detail Page mode
   if (currentView === 'court-detail') {
+    const isDetailFav = favoriteCourtIds.includes(Number(selectedCourtDetail?.id));
     return (
       <div className="min-vh-100 d-flex flex-column bg-white">
         {toastMessage && (
@@ -413,6 +583,13 @@ export default function App() {
           court={selectedCourtDetail}
           initialDate={playDate}
           availabilityRefreshKey={availabilityRefreshKey}
+          currentUser={currentUser}
+          isFavorite={isDetailFav}
+          scrollToReviews={detailScrollToReviews}
+          onToggleFavorite={handleToggleFavorite}
+          onRequireAuth={(mode) => setCurrentView(mode)}
+          onReviewUpdated={handleReviewUpdated}
+          onNotify={showNotification}
           onBackToHome={() => navigateToHome('home')}
           onProceedBooking={(bookingPlan) => {
             setSelectedCourtForBooking({
@@ -426,7 +603,11 @@ export default function App() {
               timeSlot: bookingPlan.timeSlot,
               pricePerHour: bookingPlan.price,
               priceFormatted: `${Number(bookingPlan.price).toLocaleString('vi-VN')}đ`,
-              imageUrl: bookingPlan.imageUrl || selectedCourtDetail?.imageUrl || 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
+              ownerBank: bookingPlan.ownerBank || selectedCourtDetail?.ownerBank || null,
+              imageUrl:
+                bookingPlan.imageUrl ||
+                selectedCourtDetail?.imageUrl ||
+                'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
               availableSlots: [bookingPlan.timeSlot]
             });
           }}
@@ -443,7 +624,8 @@ export default function App() {
             currentUser={currentUser}
             onClose={() => setSelectedCourtForBooking(null)}
             onBookingSuccess={handleBookingSuccess}
-            onSlotConflict={() => setAvailabilityRefreshKey(k => k + 1)}
+            onSlotConflict={() => setAvailabilityRefreshKey((k) => k + 1)}
+            onViewMyBookings={() => setShowMyBookings(true)}
           />
         )}
 
@@ -455,6 +637,8 @@ export default function App() {
             onRefreshBookings={loadMyBookings}
             onLookupByPhone={lookupBookingsByPhone}
             onCancelSuccess={handleCancelSuccess}
+            onRebookCourt={(cId) => openCourtById(cId)}
+            onReviewCourt={(cId) => openCourtById(cId, { focusReviews: true })}
             onClose={() => setShowMyBookings(false)}
           />
         )}
@@ -466,20 +650,13 @@ export default function App() {
     <div className="min-vh-100 d-flex flex-column bg-white">
       {/* Toast Alert */}
       {toastMessage && (
-        <div
-          className="position-fixed top-0 end-0 p-3"
-          style={{ zIndex: 1100 }}
-        >
+        <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1100 }}>
           <div className="alert alert-success shadow-lg border-0 d-flex align-items-center gap-2 mb-0 py-3 px-4 rounded-3 text-dark">
             <i className="bi bi-check-circle-fill text-success fs-5"></i>
             <div>
               <strong>Thông báo:</strong> {toastMessage}
             </div>
-            <button
-              type="button"
-              className="btn-close ms-auto"
-              onClick={() => setToastMessage('')}
-            ></button>
+            <button type="button" className="btn-close ms-auto" onClick={() => setToastMessage('')}></button>
           </div>
         </div>
       )}
@@ -517,17 +694,28 @@ export default function App() {
           setSelectedCategory={setSelectedCategory}
           maxPrice={maxPrice}
           setMaxPrice={setMaxPrice}
+          sortBy={sortBy}
+          setSortBy={setSortBy}
+          onlyAvailable={onlyAvailable}
+          setOnlyAvailable={setOnlyAvailable}
+          favoritesOnly={favoritesOnly}
+          setFavoritesOnly={setFavoritesOnly}
+          currentUser={currentUser}
+          favoritesCount={favoriteCourtIds.length}
+          onResetFilters={handleResetFilters}
         />
 
         {/* Featured Courts Listing */}
         <CourtList
           courts={courts}
           loading={loading}
-          onBookNow={(court) => {
-            setSelectedCourtDetail(court);
-            setCurrentView('court-detail');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
+          currentUser={currentUser}
+          favoriteCourtIds={favoriteCourtIds}
+          onToggleFavorite={handleToggleFavorite}
+          playDate={playDate}
+          favoritesOnly={favoritesOnly}
+          onResetFilters={handleResetFilters}
+          onBookNow={(court) => openCourtById(court)}
         />
 
         {/* Partner Section Banner */}
@@ -551,7 +739,8 @@ export default function App() {
           currentUser={currentUser}
           onClose={() => setSelectedCourtForBooking(null)}
           onBookingSuccess={handleBookingSuccess}
-          onSlotConflict={() => setAvailabilityRefreshKey(k => k + 1)}
+          onSlotConflict={() => setAvailabilityRefreshKey((k) => k + 1)}
+          onViewMyBookings={() => setShowMyBookings(true)}
         />
       )}
 
@@ -570,6 +759,8 @@ export default function App() {
           onRefreshBookings={loadMyBookings}
           onLookupByPhone={lookupBookingsByPhone}
           onCancelSuccess={handleCancelSuccess}
+          onRebookCourt={(cId) => openCourtById(cId)}
+          onReviewCourt={(cId) => openCourtById(cId, { focusReviews: true })}
           onClose={() => {
             setShowMyBookings(false);
             setActiveSearchTab('search');

@@ -8,6 +8,13 @@ const { pool, isDbConnected } = require('../config/db');
 
 let fallbackPartners = [];
 
+const formatLocalYMD = (dateObj = new Date()) => {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const isPeakHour = (startTimeStr) => {
   const hour = parseInt(String(startTimeStr || '0').split(':')[0], 10);
   return hour >= 17 && hour < 21;
@@ -71,6 +78,11 @@ const mapBookingRow = (b) => ({
         : 'Hoàn thành',
   cancelReason: b.cancel_reason || '',
   note: b.note || '',
+  ownerPhone: b.owner_phone || '',
+  bankName: b.bank_name || '',
+  bankAccountNo: b.bank_account_no || '',
+  bankAccountName: b.bank_account_name || '',
+  hasReviewed: Boolean(b.has_reviewed),
   createdAt: b.created_at
 });
 
@@ -95,6 +107,14 @@ const BOOKING_SELECT_SQL = `
     sc.name AS sub_court_name,
     u.full_name AS user_full_name,
     u.phone AS user_phone,
+    uo.phone AS owner_phone,
+    op.bank_name,
+    op.bank_account_no,
+    op.bank_account_name,
+    EXISTS (
+      SELECT 1 FROM court_reviews cr
+      WHERE cr.court_id = b.court_id AND cr.user_id = b.user_id
+    ) AS has_reviewed,
     COALESCE(
       TO_CHAR(ts.start_time, 'HH24:MI') || ' - ' || TO_CHAR(ts.end_time, 'HH24:MI'),
       '—'
@@ -102,6 +122,8 @@ const BOOKING_SELECT_SQL = `
   FROM bookings b
   LEFT JOIN courts c ON b.court_id = c.court_id
   LEFT JOIN users u ON b.user_id = u.user_id
+  LEFT JOIN users uo ON c.owner_id = uo.user_id
+  LEFT JOIN owner_profiles op ON c.owner_id = op.owner_id
   LEFT JOIN booking_details bd ON bd.booking_id = b.booking_id
   LEFT JOIN time_slots ts ON ts.slot_id = bd.slot_id
   LEFT JOIN sub_courts sc ON sc.sub_court_id = COALESCE(bd.sub_court_id, b.sub_court_id)
@@ -226,6 +248,14 @@ router.post('/', async (req, res) => {
     });
   }
 
+  const todayYmd = formatLocalYMD();
+  if (date < todayYmd) {
+    return res.status(400).json({
+      success: false,
+      message: 'Không thể đặt sân cho ngày trong quá khứ.'
+    });
+  }
+
   const cleanName = customerName.trim();
   const cleanPhone = phone.trim();
   const cleanPayment = typeof paymentMethod === 'string' && paymentMethod.trim() ? paymentMethod.trim() : 'Tại quầy';
@@ -235,11 +265,16 @@ router.post('/', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Kiểm tra cụm sân đang hoạt động
+    // 1. Kiểm tra cụm sân đang hoạt động + thông tin bank nhận tiền của chủ sân
     const courtRes = await client.query(
-      `SELECT court_id, name, address, price_per_slot, operational_status, is_visible
-       FROM courts
-       WHERE court_id = $1`,
+      `SELECT
+         c.court_id, c.name, c.address, c.price_per_slot, c.operational_status, c.is_visible,
+         uo.phone AS owner_phone,
+         op.bank_name, op.bank_account_no, op.bank_account_name
+       FROM courts c
+       LEFT JOIN users uo ON uo.user_id = c.owner_id
+       LEFT JOIN owner_profiles op ON op.owner_id = c.owner_id
+       WHERE c.court_id = $1`,
       [parsedCourtId]
     );
     if (courtRes.rowCount === 0 || !courtRes.rows[0].is_visible || courtRes.rows[0].operational_status !== 'ACTIVE') {
@@ -430,6 +465,10 @@ router.post('/', async (req, res) => {
         status: 'CONFIRMED',
         statusLabel: 'Đã xác nhận',
         note: cleanNote || '',
+        ownerPhone: courtRow.owner_phone || '',
+        bankName: courtRow.bank_name || '',
+        bankAccountNo: courtRow.bank_account_no || '',
+        bankAccountName: courtRow.bank_account_name || '',
         createdAt: savedBooking.created_at
       }
     });

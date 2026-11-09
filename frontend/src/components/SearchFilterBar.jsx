@@ -1,10 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { formatLocalYMD } from '../utils/vietqr';
 
-export default function SearchFilterBar({ 
-  onSearch, 
-  onTabChange, 
-  activeSearchTab, 
-  selectedCity, 
+const DEFAULT_CATEGORIES = [
+  { sport_type_id: 1, name: 'PADEL & PICKLEBALL' },
+  { sport_type_id: 2, name: 'BÓNG ĐÁ & TENNIS' },
+  { sport_type_id: 3, name: 'CẦU LÔNG TRONG NHÀ' }
+];
+
+const DEFAULT_AREAS = ['TP. Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Bình Dương'];
+
+const formatCategoryLabel = (name) => {
+  if (!name) return '';
+  if (name === 'CẦU LÔNG TRONG NHÀ') return 'Cầu lông';
+  return name
+    .toLowerCase()
+    .split(' ')
+    .map((w) => (w === '&' ? '&' : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(' ');
+};
+
+export default function SearchFilterBar({
+  onSearch,
+  onTabChange,
+  activeSearchTab,
+  selectedCity,
   setSelectedCity,
   keyword,
   setKeyword,
@@ -13,36 +32,89 @@ export default function SearchFilterBar({
   selectedCategory,
   setSelectedCategory,
   maxPrice,
-  setMaxPrice
+  setMaxPrice,
+  sortBy,
+  setSortBy,
+  onlyAvailable,
+  setOnlyAvailable,
+  favoritesOnly,
+  setFavoritesOnly,
+  currentUser,
+  favoritesCount = 0,
+  onResetFilters
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [areas, setAreas] = useState(DEFAULT_AREAS);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('http://localhost:5000/api/courts/sport-types')
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled && json?.success && Array.isArray(json.data) && json.data.length > 0) {
+          setCategories(json.data);
+        }
+      })
+      .catch(() => {});
+
+    fetch('http://localhost:5000/api/courts/areas')
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled && json?.success && Array.isArray(json.data) && json.data.length > 0) {
+          setAreas(json.data);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onSearch();
   };
 
+  const todayYmd = formatLocalYMD();
+
   return (
     <section className="container mb-5" id="search-section" style={{ marginTop: '-1.5rem', position: 'relative', zIndex: 10 }}>
       <div className="search-card-container">
         {/* Tabs */}
-        <div className="d-flex align-items-center gap-4 border-bottom pb-2 mb-4">
-          <button
-            type="button"
-            className={`search-tab-btn d-flex align-items-center gap-2 ${activeSearchTab === 'search' ? 'active' : ''}`}
-            onClick={() => onTabChange('search')}
-          >
-            <i className="bi bi-search"></i>
-            <span>Tìm sân thể thao</span>
-          </button>
-          <button
-            type="button"
-            className={`search-tab-btn d-flex align-items-center gap-2 ${activeSearchTab === 'my-bookings' ? 'active' : ''}`}
-            onClick={() => onTabChange('my-bookings')}
-          >
-            <i className="bi bi-calendar-check"></i>
-            <span>Lịch đặt của tôi</span>
-          </button>
+        <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 border-bottom pb-2 mb-4">
+          <div className="d-flex align-items-center gap-4">
+            <button
+              type="button"
+              className={`search-tab-btn d-flex align-items-center gap-2 ${activeSearchTab === 'search' ? 'active' : ''}`}
+              onClick={() => onTabChange('search')}
+            >
+              <i className="bi bi-search"></i>
+              <span>Tìm sân thể thao</span>
+            </button>
+            <button
+              type="button"
+              className={`search-tab-btn d-flex align-items-center gap-2 ${activeSearchTab === 'my-bookings' ? 'active' : ''}`}
+              onClick={() => onTabChange('my-bookings')}
+            >
+              <i className="bi bi-calendar-check"></i>
+              <span>Lịch đặt của tôi</span>
+            </button>
+          </div>
+
+          {currentUser && (
+            <button
+              type="button"
+              className={`btn btn-sm rounded-pill d-flex align-items-center gap-1 ${
+                favoritesOnly ? 'btn-danger text-white' : 'btn-outline-danger'
+              }`}
+              onClick={() => setFavoritesOnly?.(!favoritesOnly)}
+            >
+              <i className={`bi ${favoritesOnly ? 'bi-heart-fill' : 'bi-heart'}`}></i>
+              <span>Sân đã lưu ({favoritesCount})</span>
+            </button>
+          )}
         </div>
 
         {/* Search Inputs Form */}
@@ -58,7 +130,7 @@ export default function SearchFilterBar({
                 <input
                   type="text"
                   className="form-control border-start-0 ps-0 shadow-none py-2"
-                  placeholder="Tìm sân, môn thể thao..."
+                  placeholder="Tìm tên sân, địa chỉ, môn thể thao..."
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
                 />
@@ -78,10 +150,11 @@ export default function SearchFilterBar({
                   onChange={(e) => setSelectedCity(e.target.value)}
                 >
                   <option value="">Tất cả khu vực</option>
-                  <option value="TP. Hồ Chí Minh">TP. Hồ Chí Minh</option>
-                  <option value="Hà Nội">Hà Nội</option>
-                  <option value="Đà Nẵng">Đà Nẵng</option>
-                  <option value="Bình Dương">Bình Dương</option>
+                  {areas.map((area) => (
+                    <option key={area} value={area}>
+                      {area}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -96,16 +169,17 @@ export default function SearchFilterBar({
                 <input
                   type="date"
                   className="form-control border-start-0 ps-0 shadow-none py-2"
+                  min={todayYmd}
                   value={playDate}
-                  onChange={(e) => setPlayDate(e.target.value)}
+                  onChange={(e) => setPlayDate(e.target.value || todayYmd)}
                 />
               </div>
             </div>
 
             {/* Submit Button */}
             <div className="col-lg-2 col-md-6">
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 className="btn btn-brand w-100 py-2 d-flex align-items-center justify-content-center gap-2"
                 style={{ height: '42px' }}
               >
@@ -115,10 +189,10 @@ export default function SearchFilterBar({
             </div>
           </div>
 
-          {/* Advanced Filter Toggle Row */}
-          <div className="d-flex justify-content-between align-items-center pt-3 mt-2 border-top">
+          {/* Quick Categories & Sort/Advanced Toggle Row */}
+          <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-3 mt-2 border-top">
             <div className="d-flex align-items-center gap-2 flex-wrap">
-              <span className="small text-muted">Gợi ý nhanh:</span>
+              <span className="small text-muted">Bộ môn:</span>
               <button
                 type="button"
                 className={`btn btn-sm ${selectedCategory === '' ? 'btn-dark' : 'btn-light border'} rounded-pill`}
@@ -126,78 +200,95 @@ export default function SearchFilterBar({
               >
                 Tất cả
               </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${selectedCategory === 'PADEL & PICKLEBALL' ? 'btn-success' : 'btn-light border'} rounded-pill`}
-                onClick={() => setSelectedCategory(selectedCategory === 'PADEL & PICKLEBALL' ? '' : 'PADEL & PICKLEBALL')}
-              >
-                Padel & Pickleball
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${selectedCategory === 'BÓNG ĐÁ & TENNIS' ? 'btn-success' : 'btn-light border'} rounded-pill`}
-                onClick={() => setSelectedCategory(selectedCategory === 'BÓNG ĐÁ & TENNIS' ? '' : 'BÓNG ĐÁ & TENNIS')}
-              >
-                Bóng đá & Tennis
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${selectedCategory === 'CẦU LÔNG TRONG NHÀ' ? 'btn-success' : 'btn-light border'} rounded-pill`}
-                onClick={() => setSelectedCategory(selectedCategory === 'CẦU LÔNG TRONG NHÀ' ? '' : 'CẦU LÔNG TRONG NHÀ')}
-              >
-                Cầu lông
-              </button>
+              {categories.map((cat) => {
+                const active = selectedCategory === cat.name;
+                return (
+                  <button
+                    key={cat.sport_type_id || cat.name}
+                    type="button"
+                    className={`btn btn-sm ${active ? 'btn-success' : 'btn-light border'} rounded-pill`}
+                    onClick={() => setSelectedCategory(active ? '' : cat.name)}
+                  >
+                    {formatCategoryLabel(cat.name)}
+                  </button>
+                );
+              })}
             </div>
 
-            <button
-              type="button"
-              className="btn btn-link text-decoration-none text-muted small p-0 d-flex align-items-center gap-1"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-            >
-              <i className="bi bi-sliders"></i>
-              <span>{showAdvanced ? 'Ẩn bộ lọc' : 'Bộ lọc nâng cao +'}</span>
-            </button>
+            <div className="d-flex align-items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                className={`btn btn-sm rounded-pill d-flex align-items-center gap-1 ${
+                  onlyAvailable ? 'btn-success' : 'btn-outline-secondary'
+                }`}
+                onClick={() => setOnlyAvailable?.(!onlyAvailable)}
+              >
+                <i className={`bi ${onlyAvailable ? 'bi-check-circle-fill' : 'bi-clock'}`}></i>
+                <span>Còn sân trống</span>
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-link text-decoration-none text-muted small p-0 d-flex align-items-center gap-1"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+              >
+                <i className="bi bi-sliders"></i>
+                <span>{showAdvanced ? 'Ẩn lọc nâng cao' : 'Lọc giá & Sắp xếp'}</span>
+              </button>
+            </div>
           </div>
 
           {/* Expanded Advanced Filters */}
           {showAdvanced && (
             <div className="bg-light rounded-3 p-3 mt-3 border">
               <div className="row g-3 align-items-center">
-                <div className="col-md-6">
+                <div className="col-md-5">
                   <label className="form-label small fw-semibold text-muted mb-1">
-                    Mức giá tối đa: <span className="text-dark fw-bold">{maxPrice ? `${Number(maxPrice).toLocaleString('vi-VN')}đ / giờ` : 'Không giới hạn'}</span>
+                    Mức giá tối đa:{' '}
+                    <span className="text-dark fw-bold">
+                      {maxPrice ? `${Number(maxPrice).toLocaleString('vi-VN')}đ / giờ` : 'Không giới hạn'}
+                    </span>
                   </label>
                   <input
                     type="range"
                     className="form-range"
                     min="100000"
-                    max="500000"
+                    max="1000000"
                     step="20000"
-                    value={maxPrice || 500000}
+                    value={maxPrice || 1000000}
                     onChange={(e) => setMaxPrice(e.target.value)}
                   />
                   <div className="d-flex justify-content-between small text-muted">
                     <span>100.000đ</span>
-                    <span>300.000đ</span>
                     <span>500.000đ</span>
+                    <span>1.000.000đ</span>
                   </div>
                 </div>
 
-                <div className="col-md-6 text-end">
-                  <button 
-                    type="button" 
-                    className="btn btn-outline-secondary btn-sm me-2"
-                    onClick={() => {
-                      setKeyword('');
-                      setSelectedCity('');
-                      setSelectedCategory('');
-                      setMaxPrice('');
-                    }}
+                <div className="col-md-3">
+                  <label className="form-label small fw-semibold text-muted mb-1">Sắp xếp theo</label>
+                  <select
+                    className="form-select form-select-sm"
+                    value={sortBy}
+                    onChange={(e) => setSortBy?.(e.target.value)}
                   >
-                    Đặt lại bộ lọc
+                    <option value="featured">Đề xuất nổi bật</option>
+                    <option value="price_asc">Giá thấp đến cao</option>
+                    <option value="price_desc">Giá cao đến thấp</option>
+                    <option value="rating_desc">Đánh giá cao nhất</option>
+                  </select>
+                </div>
+
+                <div className="col-md-4 text-md-end pt-md-3">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm me-2"
+                    onClick={() => onResetFilters?.()}
+                  >
+                    Đặt lại tất cả
                   </button>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     className="btn btn-brand btn-sm"
                     onClick={onSearch}
                   >
@@ -212,4 +303,3 @@ export default function SearchFilterBar({
     </section>
   );
 }
-

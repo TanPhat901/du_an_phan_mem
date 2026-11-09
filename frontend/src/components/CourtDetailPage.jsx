@@ -1,11 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-
-const formatLocalYMD = (dateObj) => {
-  const yyyy = dateObj.getFullYear();
-  const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-  const dd = String(dateObj.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { formatLocalYMD, getStoredToken } from '../utils/vietqr';
 
 const getDayMeta = (ymdStr, index) => {
   const [y, m, d] = ymdStr.split('-').map(Number);
@@ -41,14 +35,37 @@ const buildDateOptions = (initialDate) => {
   });
 };
 
+const getInitials = (name) => {
+  const parts = String(name || 'U').trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
+  }
+  return parts[0].slice(0, 2).toUpperCase() || 'U';
+};
+
+const formatReviewTime = (isoStr) => {
+  if (!isoStr) return '';
+  const dt = new Date(isoStr);
+  if (Number.isNaN(dt.getTime())) return '';
+  return dt.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
 export default function CourtDetailPage({
   court,
   initialDate,
   availabilityRefreshKey = 0,
+  currentUser,
+  isFavorite: propIsFavorite,
+  scrollToReviews = false,
+  onToggleFavorite,
+  onRequireAuth,
+  onReviewUpdated,
+  onNotify,
   onBackToHome,
   onProceedBooking
 }) {
   const courtId = court?.id || 1;
+  const reviewsSectionRef = useRef(null);
   const [detail, setDetail] = useState(court || null);
   const [detailLoading, setDetailLoading] = useState(true);
 
@@ -62,13 +79,32 @@ export default function CourtDetailPage({
   const [slotsLoading, setSlotsLoading] = useState(true);
   const [slotsError, setSlotsError] = useState('');
   const [selectedSlot, setSelectedSlot] = useState(null);
-  const [isSaved, setIsSaved] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
-  // Tải thông tin chi tiết cụm sân + danh sách sân con từ PostgreSQL
+  // Real reviews state
+  const [reviewsState, setReviewsState] = useState({
+    loading: true,
+    avgRating: Number(court?.rating || 0),
+    reviewCount: Number(court?.reviewCount || 0),
+    breakdown: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+    canReview: false,
+    myReview: null,
+    reviews: []
+  });
+  const [ratingInput, setRatingInput] = useState(5);
+  const [commentInput, setCommentInput] = useState('');
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewMsg, setReviewMsg] = useState('');
+  const [reviewErr, setReviewErr] = useState('');
+
+  // Load facility detail
   useEffect(() => {
     let cancelled = false;
     setDetailLoading(true);
-    fetch(`http://localhost:5000/api/courts/${courtId}`)
+    const token = getStoredToken();
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+    fetch(`http://localhost:5000/api/courts/${courtId}`, { headers })
       .then(async (res) => {
         const json = await res.json();
         if (!res.ok || !json.success || !json.data) {
@@ -120,7 +156,49 @@ export default function CourtDetailPage({
     return () => {
       cancelled = true;
     };
+  }, [courtId, currentUser]);
+
+  // Load real reviews from PostgreSQL
+  const loadReviews = useCallback(async () => {
+    setReviewsState((prev) => ({ ...prev, loading: true }));
+    const token = getStoredToken();
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    try {
+      const res = await fetch(`http://localhost:5000/api/courts/${courtId}/reviews`, { headers });
+      const json = await res.json();
+      if (!res.ok || !json.success || !json.data) {
+        throw new Error(json.message || 'Không thể tải đánh giá.');
+      }
+      const d = json.data;
+      setReviewsState({
+        loading: false,
+        avgRating: Number(d.avgRating || 0),
+        reviewCount: Number(d.reviewCount || 0),
+        breakdown: d.breakdown || { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+        canReview: Boolean(d.canReview),
+        myReview: d.myReview || null,
+        reviews: Array.isArray(d.reviews) ? d.reviews : []
+      });
+      if (d.myReview) {
+        setRatingInput(Number(d.myReview.rating || 5));
+        setCommentInput(d.myReview.comment || '');
+      }
+    } catch {
+      setReviewsState((prev) => ({ ...prev, loading: false }));
+    }
   }, [courtId]);
+
+  useEffect(() => {
+    loadReviews();
+  }, [loadReviews, currentUser, availabilityRefreshKey]);
+
+  useEffect(() => {
+    if (scrollToReviews && reviewsSectionRef.current) {
+      setTimeout(() => {
+        reviewsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 220);
+    }
+  }, [scrollToReviews, detailLoading]);
 
   // Kiểm tra lịch trống thực tế theo ngày & sân con
   const loadAvailability = useCallback(async () => {
@@ -141,10 +219,10 @@ export default function CourtDetailPage({
       setSlots(fetchedSlots);
       setSelectedSlot((prev) => {
         if (prev) {
-          const same = fetchedSlots.find(s => s.slotId === prev.slotId && s.status === 'available');
+          const same = fetchedSlots.find((s) => s.slotId === prev.slotId && s.status === 'available');
           if (same) return same;
         }
-        return fetchedSlots.find(s => s.status === 'available') || null;
+        return fetchedSlots.find((s) => s.status === 'available') || null;
       });
     } catch (err) {
       setSlotsError(err.message);
@@ -172,8 +250,109 @@ export default function CourtDetailPage({
       date: selectedDate.fullDate,
       timeSlot: selectedSlot.slot,
       address: detail?.address || court?.address || '',
+      ownerBank: detail?.ownerBank || null,
       imageUrl: selectedSubCourt?.imageUrl || detail?.imageUrl || court?.imageUrl
     });
+  };
+
+  const handleReviewSubmit = async (e) => {
+    e.preventDefault();
+    setReviewErr('');
+    setReviewMsg('');
+    const token = getStoredToken();
+    if (!token) {
+      onRequireAuth?.('login');
+      return;
+    }
+    const cleanComment = commentInput.trim();
+    if (cleanComment.length < 5) {
+      setReviewErr('Vui lòng nhập nhận xét tối thiểu 5 ký tự.');
+      return;
+    }
+
+    setReviewBusy(true);
+    try {
+      const res = await fetch(`http://localhost:5000/api/courts/${courtId}/reviews`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          rating: ratingInput,
+          comment: cleanComment
+        })
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Không thể lưu đánh giá.');
+      }
+      setReviewMsg(json.message || 'Cảm ơn bạn đã gửi đánh giá!');
+      await loadReviews();
+      if (json.data) {
+        setDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                rating: json.data.avgRating,
+                reviewCount: json.data.reviewCount
+              }
+            : prev
+        );
+        onReviewUpdated?.(courtId, json.data.avgRating, json.data.reviewCount);
+      }
+    } catch (err) {
+      setReviewErr(err.message);
+    } finally {
+      setReviewBusy(false);
+    }
+  };
+
+  const handleDeleteMyReview = async () => {
+    const token = getStoredToken();
+    if (!token) return;
+    setReviewBusy(true);
+    setReviewErr('');
+    setReviewMsg('');
+    try {
+      const res = await fetch(`http://localhost:5000/api/courts/${courtId}/reviews/my`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Không thể xóa đánh giá.');
+      }
+      setCommentInput('');
+      setRatingInput(5);
+      setReviewMsg(json.message || 'Đã xóa đánh giá của bạn.');
+      await loadReviews();
+      if (json.data) {
+        setDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                rating: json.data.avgRating,
+                reviewCount: json.data.reviewCount
+              }
+            : prev
+        );
+        onReviewUpdated?.(courtId, json.data.avgRating, json.data.reviewCount);
+      }
+    } catch (err) {
+      setReviewErr(err.message);
+    } finally {
+      setReviewBusy(false);
+    }
+  };
+
+  const isSaved = typeof propIsFavorite === 'boolean' ? propIsFavorite : Boolean(detail?.isFavorite);
+
+  const handleShareClick = () => {
+    navigator.clipboard?.writeText(window.location.href).catch(() => {});
+    setCopiedLink(true);
+    onNotify?.('Đã sao chép liên kết cụm sân vào khay nhớ tạm!');
+    setTimeout(() => setCopiedLink(false), 2500);
   };
 
   const displayAmenities =
@@ -191,9 +370,15 @@ export default function CourtDetailPage({
     return `${val} phút`;
   };
 
+  const displayAvgRating = reviewsState.reviewCount > 0
+    ? reviewsState.avgRating.toFixed(1)
+    : Number(detail?.reviewCount || 0) > 0
+      ? Number(detail.rating).toFixed(1)
+      : 'Mới';
+  const displayReviewCount = reviewsState.reviewCount;
+
   return (
     <div className="bg-light flex-grow-1 pb-5">
-      {/* Main Container */}
       <div className="container py-4">
         {/* Breadcrumb & Action Row */}
         <div className="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
@@ -215,21 +400,23 @@ export default function CourtDetailPage({
             <button
               type="button"
               className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1 bg-white"
-              onClick={() => {
-                navigator.clipboard?.writeText(window.location.href);
-                alert('Đã sao chép liên kết sân để chia sẻ!');
-              }}
+              onClick={handleShareClick}
             >
-              <i className="bi bi-share"></i>
-              <span>Chia sẻ</span>
+              <i className={`bi ${copiedLink ? 'bi-check2 text-success' : 'bi-share'}`}></i>
+              <span>{copiedLink ? 'Đã sao chép ✓' : 'Chia sẻ'}</span>
             </button>
             <button
               type="button"
               className={`btn btn-sm ${isSaved ? 'btn-danger' : 'btn-outline-secondary bg-white'} d-flex align-items-center gap-1`}
-              onClick={() => setIsSaved(!isSaved)}
+              onClick={() => onToggleFavorite?.(detail || court)}
             >
               <i className={`bi ${isSaved ? 'bi-heart-fill' : 'bi-heart'}`}></i>
               <span>{isSaved ? 'Đã lưu' : 'Lưu sân'}</span>
+              {Number(detail?.favoritesCount || 0) > 0 && (
+                <span className="badge bg-white bg-opacity-25 text-reset ms-1" style={{ fontSize: '0.68rem' }}>
+                  {detail.favoritesCount}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -248,6 +435,11 @@ export default function CourtDetailPage({
                 Mở cửa: {detail.openTime}
               </span>
             )}
+            {detail?.ownerBank?.bankAccountNo && (
+              <span className="badge bg-info-subtle text-info-emphasis py-1 px-2 fw-semibold" style={{ fontSize: '0.72rem' }}>
+                <i className="bi bi-qr-code me-1"></i>Hỗ trợ VietQR
+              </span>
+            )}
           </div>
 
           <h1 className="h2 fw-bold text-brand-dark mb-2">
@@ -255,11 +447,18 @@ export default function CourtDetailPage({
           </h1>
 
           <div className="d-flex flex-wrap align-items-center gap-3 text-muted small">
-            <div className="d-flex align-items-center gap-1 text-dark fw-bold">
+            <a
+              href="#court-reviews-section"
+              className="d-flex align-items-center gap-1 text-dark fw-bold text-decoration-none"
+              onClick={(e) => {
+                e.preventDefault();
+                reviewsSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+              }}
+            >
               <i className="bi bi-star-fill text-warning"></i>
-              <span>{detail?.rating || 4.9}</span>
-              <span className="text-muted fw-normal">({detail?.reviewCount || 120} đánh giá)</span>
-            </div>
+              <span>{displayAvgRating}</span>
+              <span className="text-muted fw-normal">({displayReviewCount} đánh giá)</span>
+            </a>
             <span>•</span>
             <div className="d-flex align-items-center gap-1">
               <i className="bi bi-geo-alt text-brand"></i>
@@ -378,42 +577,186 @@ export default function CourtDetailPage({
               </div>
             </div>
 
-            {/* ĐÁNH GIÁ TỪ NGƯỜI CHƠI */}
-            <div className="bg-white rounded-4 p-4 border shadow-sm">
-              <div className="d-flex justify-content-between align-items-center mb-3">
+            {/* ĐÁNH GIÁ TỪ NGƯỜI CHƠI (REAL POSTGRESQL) */}
+            <div id="court-reviews-section" ref={reviewsSectionRef} className="bg-white rounded-4 p-4 border shadow-sm">
+              <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
                 <div className="d-flex align-items-center gap-2">
-                  <div className="d-inline-flex align-items-center gap-1 bg-warning bg-opacity-25 text-dark fw-bold rounded-pill px-2 py-1 small">
+                  <div className="d-inline-flex align-items-center gap-1 bg-warning bg-opacity-25 text-dark fw-bold rounded-pill px-3 py-1">
                     <i className="bi bi-star-fill text-warning"></i>
-                    <span>{detail?.rating || 4.9}</span>
+                    <span>{displayAvgRating}</span>
                   </div>
-                  <span className="fw-bold text-dark">Đánh giá từ người chơi</span>
-                  <span className="text-muted small d-none d-sm-inline">({detail?.reviewCount || 120} nhận xét)</span>
+                  <div>
+                    <h5 className="fw-bold text-brand-dark mb-0">Đánh giá từ người chơi</h5>
+                    <div className="text-muted small">{displayReviewCount} nhận xét thực tế tại sân</div>
+                  </div>
                 </div>
               </div>
 
-              <div className="p-3 bg-light rounded-3 border">
-                <div className="d-flex justify-content-between align-items-start mb-2">
-                  <div className="d-flex align-items-center gap-2">
-                    <div className="rounded-circle bg-success text-white fw-bold d-flex align-items-center justify-content-center" style={{ width: '38px', height: '38px' }}>
-                      NK
+              {/* Rating breakdown */}
+              {displayReviewCount > 0 && (
+                <div className="row g-2 align-items-center p-3 bg-light rounded-3 border mb-4">
+                  <div className="col-sm-4 text-center border-end-sm">
+                    <div className="display-6 fw-bold text-brand-dark mb-0">{displayAvgRating}</div>
+                    <div className="text-warning small mb-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <i
+                          key={star}
+                          className={`bi ${star <= Math.round(reviewsState.avgRating) ? 'bi-star-fill' : 'bi-star'} me-1`}
+                        ></i>
+                      ))}
                     </div>
-                    <div>
-                      <div className="fw-bold text-dark">Nguyễn Tuấn Kiệt</div>
-                      <div className="text-muted" style={{ fontSize: '0.72rem' }}>Đã trải nghiệm thực tế tại {detail?.name}</div>
-                    </div>
+                    <div className="small text-muted">{displayReviewCount} lượt đánh giá</div>
                   </div>
-                  <div className="text-warning small">
-                    <i className="bi bi-star-fill"></i>
-                    <i className="bi bi-star-fill"></i>
-                    <i className="bi bi-star-fill"></i>
-                    <i className="bi bi-star-fill"></i>
-                    <i className="bi bi-star-fill"></i>
+                  <div className="col-sm-8">
+                    {[5, 4, 3, 2, 1].map((star) => {
+                      const count = Number(reviewsState.breakdown?.[star] || 0);
+                      const pct = displayReviewCount > 0 ? Math.round((count / displayReviewCount) * 100) : 0;
+                      return (
+                        <div key={star} className="d-flex align-items-center gap-2 small mb-1">
+                          <span className="text-muted fw-semibold" style={{ width: '34px' }}>{star} ★</span>
+                          <div className="progress flex-grow-1" style={{ height: '7px' }}>
+                            <div className="progress-bar bg-warning" style={{ width: `${pct}%` }}></div>
+                          </div>
+                          <span className="text-muted text-end" style={{ width: '28px' }}>{count}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-                <p className="text-dark small mb-0 fst-italic" style={{ lineHeight: '1.5' }}>
-                  "Mặt sân mới rất êm chân, đèn chiếu sáng rõ ràng. Đặt lịch online giữ chỗ đúng khung giờ, tới sân check-in nhanh gọn!"
-                </p>
+              )}
+
+              {/* Review Submission / Eligibility Box */}
+              <div className="p-3 bg-light rounded-3 border mb-4">
+                {!currentUser ? (
+                  <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <div className="small text-muted">
+                      <i className="bi bi-chat-square-quote text-brand me-2"></i>
+                      Đăng nhập để gửi đánh giá sau khi trải nghiệm sân.
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-brand"
+                      onClick={() => onRequireAuth?.('login')}
+                    >
+                      Đăng nhập
+                    </button>
+                  </div>
+                ) : !reviewsState.canReview ? (
+                  <div className="small text-muted d-flex align-items-center gap-2">
+                    <i className="bi bi-info-circle text-brand fs-5"></i>
+                    <span>Bạn cần đặt sân tại cơ sở này ít nhất 1 lần để mở quyền viết đánh giá xác thực.</span>
+                  </div>
+                ) : (
+                  <form onSubmit={handleReviewSubmit}>
+                    <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                      <span className="fw-bold small text-brand-dark">
+                        {reviewsState.myReview ? 'Cập nhật đánh giá của bạn' : 'Chia sẻ trải nghiệm của bạn'}
+                      </span>
+                      <div className="d-flex align-items-center gap-1" role="group" aria-label="Chọn số sao">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            className="btn btn-sm p-0 border-0 bg-transparent fs-5"
+                            onClick={() => setRatingInput(star)}
+                            title={`${star} sao`}
+                          >
+                            <i className={`bi ${star <= ratingInput ? 'bi-star-fill text-warning' : 'bi-star text-secondary'}`}></i>
+                          </button>
+                        ))}
+                        <span className="small fw-semibold text-dark ms-1">{ratingInput}/5</span>
+                      </div>
+                    </div>
+
+                    <textarea
+                      rows="3"
+                      className="form-control form-control-sm mb-2"
+                      placeholder="Mặt sân, ánh sáng, thái độ phục vụ, chỗ để xe như thế nào?..."
+                      maxLength={1000}
+                      value={commentInput}
+                      onChange={(e) => setCommentInput(e.target.value)}
+                    />
+
+                    {reviewErr && <div className="alert alert-danger py-1 px-2 small mb-2">{reviewErr}</div>}
+                    {reviewMsg && <div className="alert alert-success py-1 px-2 small mb-2">{reviewMsg}</div>}
+
+                    <div className="d-flex justify-content-between align-items-center gap-2">
+                      <span className="text-muted" style={{ fontSize: '0.72rem' }}>
+                        {commentInput.trim().length}/1000 ký tự
+                      </span>
+                      <div className="d-flex gap-2">
+                        {reviewsState.myReview && (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-danger"
+                            disabled={reviewBusy}
+                            onClick={handleDeleteMyReview}
+                          >
+                            Xóa đánh giá
+                          </button>
+                        )}
+                        <button type="submit" className="btn btn-sm btn-brand" disabled={reviewBusy}>
+                          {reviewBusy ? 'Đang gửi...' : reviewsState.myReview ? 'Cập nhật đánh giá' : 'Gửi đánh giá'}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                )}
               </div>
+
+              {/* Reviews list */}
+              {reviewsState.loading ? (
+                <div className="text-center py-3 small text-muted">Đang tải nhận xét...</div>
+              ) : reviewsState.reviews.length === 0 ? (
+                <div className="text-center py-4 text-muted small border rounded-3 bg-white">
+                  <i className="bi bi-stars fs-4 d-block mb-1 text-warning"></i>
+                  Chưa có đánh giá nào cho cụm sân này. Hãy là người đầu tiên chia sẻ trải nghiệm sau khi đặt sân!
+                </div>
+              ) : (
+                <div className="d-flex flex-column gap-3">
+                  {reviewsState.reviews.map((rv) => (
+                    <div key={rv.reviewId} className="p-3 bg-light rounded-3 border">
+                      <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
+                        <div className="d-flex align-items-center gap-2">
+                          <div
+                            className="rounded-circle bg-success text-white fw-bold d-flex align-items-center justify-content-center flex-shrink-0"
+                            style={{ width: '38px', height: '38px', fontSize: '0.85rem' }}
+                          >
+                            {getInitials(rv.authorName)}
+                          </div>
+                          <div>
+                            <div className="d-flex align-items-center gap-2 flex-wrap">
+                              <span className="fw-bold text-dark small">{rv.authorName}</span>
+                              {rv.isMine && (
+                                <span className="badge bg-success-subtle text-success" style={{ fontSize: '0.65rem' }}>
+                                  Của bạn
+                                </span>
+                              )}
+                              {rv.verifiedBooking && (
+                                <span className="badge bg-primary-subtle text-primary" style={{ fontSize: '0.65rem' }}>
+                                  <i className="bi bi-patch-check-fill me-1"></i>Đã đặt sân
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-muted" style={{ fontSize: '0.72rem' }}>
+                              {formatReviewTime(rv.updatedAt || rv.createdAt)}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-warning small flex-shrink-0">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <i key={star} className={`bi ${star <= rv.rating ? 'bi-star-fill' : 'bi-star'}`}></i>
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-dark small mb-0" style={{ lineHeight: '1.55', whiteSpace: 'pre-line' }}>
+                        {rv.comment}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -430,7 +773,7 @@ export default function CourtDetailPage({
                   value={selectedSubCourt?.id ?? ''}
                   onChange={(e) => {
                     const val = e.target.value;
-                    const match = subCourts.find(c => String(c.id ?? '') === val);
+                    const match = subCourts.find((c) => String(c.id ?? '') === val);
                     if (match) setSelectedSubCourt(match);
                   }}
                 >
@@ -454,7 +797,7 @@ export default function CourtDetailPage({
                 </div>
 
                 <div className="row g-2 mb-2">
-                  {dateOptions.map((d, index) => (
+                  {dateOptions.map((d) => (
                     <div key={d.fullDate} className="col-3">
                       <div
                         className={`date-select-pill ${selectedDate.fullDate === d.fullDate ? 'active' : ''}`}

@@ -6,7 +6,8 @@ const { pool, checkDbConnection } = require('../config/db');
 const MIGRATIONS = [
   'create_sub_courts.sql',
   'enhance_bookings_and_sub_courts.sql',
-  'enhance_time_slots_peak.sql'
+  'enhance_time_slots_peak.sql',
+  'enhance_customer_features.sql'
 ];
 
 async function applyMigrations() {
