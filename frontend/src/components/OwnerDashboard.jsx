@@ -21,6 +21,35 @@ const formatCompactMoney = (amount) => {
   return `${num}đ`;
 };
 
+const timeToMinutes = (hhmm) => {
+  if (typeof hhmm !== 'string') return null;
+  const match = hhmm.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
+};
+
+const addMinutesToHHMM = (hhmm, deltaMinutes) => {
+  const base = timeToMinutes(hhmm);
+  if (base === null) return '09:00';
+  const target = Math.min(23 * 60 + 59, base + deltaMinutes);
+  const h = Math.floor(target / 60);
+  const m = target % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+};
+
+const estimateGeneratedSlotsCount = (openTime, closeTime, durationMinutes) => {
+  const start = timeToMinutes(openTime);
+  const end = timeToMinutes(closeTime);
+  const step = Number(durationMinutes);
+  if (start === null || end === null || !Number.isInteger(step) || step < 15 || end - start < step) {
+    return 0;
+  }
+  return Math.min(48, Math.floor((end - start) / step));
+};
+
 export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, onOpenAuth, onOpenProfile }) {
   // Navigation active tab
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'courts' | 'schedule' | 'finance' | 'settings'
@@ -48,6 +77,29 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(() => formatLocalYMD());
   const [scheduleData, setScheduleData] = useState({ timeSlots: [], bookings: [], blocks: [] });
   const [scheduleLoading, setScheduleLoading] = useState(false);
+
+  const [timeSlots, setTimeSlots] = useState([]);
+  const [timeSlotsLoading, setTimeSlotsLoading] = useState(false);
+  const [showTimeSlotsModal, setShowTimeSlotsModal] = useState(false);
+  const [slotModalMode, setSlotModalMode] = useState('single'); // 'single' | 'batch'
+  const [editingTimeSlot, setEditingTimeSlot] = useState(null);
+  const [slotForm, setSlotForm] = useState({
+    startTime: '08:00',
+    endTime: '09:00',
+    isPeak: false,
+    isActive: true
+  });
+  const [batchSlotForm, setBatchSlotForm] = useState({
+    openTime: '06:00',
+    closeTime: '22:00',
+    durationMinutes: 60,
+    applyPeak: true,
+    peakStart: '17:00',
+    peakEnd: '21:00',
+    replaceExisting: false
+  });
+  const [slotSaving, setSlotSaving] = useState(false);
+  const [slotModalError, setSlotModalError] = useState('');
 
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
@@ -155,7 +207,8 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
       bankName: f.bank_name || '',
       bankAccountNo: f.bank_account_no || '',
       bankAccountName: f.bank_account_name || '',
-      openTime: '06:00 - 22:00',
+      openTime: f.open_time_range || 'Chưa thiết lập giờ',
+      activeSlotCount: Number(f.active_slot_count || 0),
       imageUrl: FACILITY_FALLBACK_IMAGES[(idNum - 1) % FACILITY_FALLBACK_IMAGES.length]
     };
   }, [currentUser?.email, currentUser?.fullName]);
@@ -249,6 +302,19 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     }
   }, [ownerRequest]);
 
+  const loadTimeSlots = useCallback(async (facilityId) => {
+    if (!facilityId) return;
+    setTimeSlotsLoading(true);
+    try {
+      const payload = await ownerRequest(`/time-slots?courtId=${facilityId}`);
+      setTimeSlots(payload.data || []);
+    } catch {
+      setTimeSlots([]);
+    } finally {
+      setTimeSlotsLoading(false);
+    }
+  }, [ownerRequest]);
+
   const loadAnalytics = useCallback(async (facilityId, dateStr) => {
     if (!facilityId) return;
     setAnalyticsLoading(true);
@@ -269,9 +335,10 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     await Promise.all([
       loadBookings(fId),
       loadSchedule(fId, dStr),
+      loadTimeSlots(fId),
       loadAnalytics(fId, dStr)
     ]);
-  }, [selectedFacilityId, selectedScheduleDate, loadBookings, loadSchedule, loadAnalytics]);
+  }, [selectedFacilityId, selectedScheduleDate, loadBookings, loadSchedule, loadTimeSlots, loadAnalytics]);
 
   useEffect(() => {
     if (!isAuthorizedOwner) {
@@ -378,7 +445,10 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
       address: String(form.get('address') || '').trim(),
       area: String(form.get('area') || '').trim() || 'TP. Hồ Chí Minh',
       description: String(form.get('description') || '').trim(),
-      price_per_slot: Number(form.get('pricePerSlot') || 0)
+      price_per_slot: Number(form.get('pricePerSlot') || 0),
+      open_time: String(form.get('openTime') || '06:00').trim(),
+      close_time: String(form.get('closeTime') || '22:00').trim(),
+      slot_duration: Number(form.get('slotDuration') || 60)
     };
     setFacilitySaving(true);
     try {
@@ -676,6 +746,174 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
     }
   };
 
+  // Quản lý & tự thiết lập khung giờ cho cụm sân
+  const syncAfterSlotChange = async () => {
+    if (!currentFacility?.id) return;
+    await Promise.all([
+      loadFacilities(currentFacility.id),
+      refreshOperationalData(currentFacility.id, selectedScheduleDate)
+    ]);
+  };
+
+  const openTimeSlotsModal = (mode = 'single') => {
+    if (!currentFacility) return;
+    setSlotModalError('');
+    setEditingTimeSlot(null);
+    setSlotForm({
+      startTime: '08:00',
+      endTime: '09:00',
+      isPeak: false,
+      isActive: true
+    });
+    setSlotModalMode(mode);
+    setShowTimeSlotsModal(true);
+    loadTimeSlots(currentFacility.id);
+  };
+
+  const handleSelectSlotToEdit = (slot) => {
+    setSlotModalError('');
+    setSlotModalMode('single');
+    setEditingTimeSlot(slot);
+    setSlotForm({
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      isPeak: Boolean(slot.isPeak),
+      isActive: Boolean(slot.isActive)
+    });
+  };
+
+  const handleResetSlotForm = () => {
+    setSlotModalError('');
+    setEditingTimeSlot(null);
+    setSlotForm({
+      startTime: '08:00',
+      endTime: '09:00',
+      isPeak: false,
+      isActive: true
+    });
+  };
+
+  const handleSaveSingleSlot = async (e) => {
+    e.preventDefault();
+    if (!currentFacility || slotSaving) return;
+    const startMins = timeToMinutes(slotForm.startTime);
+    const endMins = timeToMinutes(slotForm.endTime);
+    if (startMins === null || endMins === null || endMins - startMins < 15) {
+      setSlotModalError('Giờ kết thúc phải sau giờ bắt đầu ít nhất 15 phút.');
+      return;
+    }
+
+    setSlotSaving(true);
+    setSlotModalError('');
+    try {
+      const endpoint = editingTimeSlot
+        ? `/time-slots/${editingTimeSlot.slotId}`
+        : '/time-slots';
+      const payload = await ownerRequest(endpoint, {
+        method: editingTimeSlot ? 'PUT' : 'POST',
+        body: JSON.stringify({
+          courtId: currentFacility.id,
+          startTime: slotForm.startTime,
+          endTime: slotForm.endTime,
+          isPeak: Boolean(slotForm.isPeak),
+          isActive: Boolean(slotForm.isActive)
+        })
+      });
+      await syncAfterSlotChange();
+      setEditingTimeSlot(null);
+      setSlotForm({
+        startTime: addMinutesToHHMM(slotForm.endTime, 0),
+        endTime: addMinutesToHHMM(slotForm.endTime, endMins - startMins),
+        isPeak: timeToMinutes(slotForm.endTime) >= 17 * 60 && timeToMinutes(slotForm.endTime) < 21 * 60,
+        isActive: true
+      });
+      showToast(payload.message || 'Đã lưu khung giờ thành công!');
+    } catch (error) {
+      setSlotModalError(error.message);
+    } finally {
+      setSlotSaving(false);
+    }
+  };
+
+  const handleToggleSlotField = async (slot, field) => {
+    if (!slot || slotSaving) return;
+    setSlotSaving(true);
+    setSlotModalError('');
+    try {
+      const nextVal = field === 'isPeak' ? !slot.isPeak : !slot.isActive;
+      const payload = await ownerRequest(`/time-slots/${slot.slotId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ [field]: nextVal })
+      });
+      await syncAfterSlotChange();
+      showToast(payload.message || 'Đã cập nhật khung giờ!');
+    } catch (error) {
+      setSlotModalError(error.message);
+    } finally {
+      setSlotSaving(false);
+    }
+  };
+
+  const handleDeleteTimeSlot = async (slot) => {
+    if (!slot || slotSaving) return;
+    const confirmMsg = slot.bookingCount > 0
+      ? `Khung giờ "${slot.label}" đã có ${slot.bookingCount} đơn đặt trước đó nên hệ thống sẽ chuyển sang Tạm ẩn (ngưng nhận đơn mới). Tiếp tục?`
+      : `Bạn có chắc muốn xóa hẳn khung giờ "${slot.label}"?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setSlotSaving(true);
+    setSlotModalError('');
+    try {
+      const payload = await ownerRequest(`/time-slots/${slot.slotId}`, {
+        method: 'DELETE'
+      });
+      if (editingTimeSlot?.slotId === slot.slotId) {
+        setEditingTimeSlot(null);
+      }
+      await syncAfterSlotChange();
+      showToast(payload.message || 'Đã xóa khung giờ!');
+    } catch (error) {
+      setSlotModalError(error.message);
+    } finally {
+      setSlotSaving(false);
+    }
+  };
+
+  const handleGenerateBatchSlots = async (e) => {
+    e.preventDefault();
+    if (!currentFacility || slotSaving) return;
+    if (
+      batchSlotForm.replaceExisting &&
+      !window.confirm('Thay thế toàn bộ khung giờ hiện tại bằng dải khung giờ mới? (Các khung giờ cũ có lịch sử sẽ được tự động ẩn đi).')
+    ) {
+      return;
+    }
+
+    setSlotSaving(true);
+    setSlotModalError('');
+    try {
+      const payload = await ownerRequest('/time-slots/generate', {
+        method: 'POST',
+        body: JSON.stringify({
+          courtId: currentFacility.id,
+          openTime: batchSlotForm.openTime,
+          closeTime: batchSlotForm.closeTime,
+          durationMinutes: Number(batchSlotForm.durationMinutes),
+          applyPeak: Boolean(batchSlotForm.applyPeak),
+          peakStart: batchSlotForm.peakStart,
+          peakEnd: batchSlotForm.peakEnd,
+          replaceExisting: Boolean(batchSlotForm.replaceExisting)
+        })
+      });
+      await syncAfterSlotChange();
+      showToast(payload.message || 'Đã tạo nhanh danh sách khung giờ!');
+    } catch (error) {
+      setSlotModalError(error.message);
+    } finally {
+      setSlotSaving(false);
+    }
+  };
+
   // Xuất file CSV sao kê doanh thu thật
   const handleExportFinanceCsv = () => {
     const validRows = bookings.filter(b => b.status !== 'CANCELLED');
@@ -916,7 +1154,17 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                           <span>{currentFacility.address || 'Chưa cập nhật địa chỉ'}</span>
                         </p>
                         <div className="d-flex align-items-center gap-3 small text-muted flex-wrap">
-                          <span><i className="bi bi-clock me-1 text-secondary"></i> Giờ mở cửa: {currentFacility.openTime}</span>
+                          <span>
+                            <i className="bi bi-clock me-1 text-secondary"></i>
+                            Giờ mở cửa: <strong className="text-dark">{currentFacility.openTime}</strong> ({activeTimeSlots.length} khung giờ)
+                            <button
+                              type="button"
+                              className="btn btn-link btn-sm p-0 ms-2 text-brand fw-semibold text-decoration-none"
+                              onClick={() => openTimeSlotsModal('single')}
+                            >
+                              Thiết lập giờ
+                            </button>
+                          </span>
                           <span><i className="bi bi-telephone me-1 text-secondary"></i> Hotline: {currentFacility.ownerPhone || 'Chưa cập nhật'}</span>
                           <span><i className="bi bi-diagram-3 me-1 text-secondary"></i> Môn: {facilitySports.join(', ')}</span>
                         </div>
@@ -1213,6 +1461,13 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                               <span><i className="bi bi-calendar-event me-2"></i> Xem ma trận lịch & khóa khung giờ</span>
                               <i className="bi bi-chevron-right small"></i>
                             </button>
+                            <button
+                              className="btn btn-outline-primary text-start d-flex align-items-center justify-content-between py-2 px-3 rounded-3"
+                              onClick={() => openTimeSlotsModal('single')}
+                            >
+                              <span><i className="bi bi-clock-history me-2"></i> Thiết lập khung giờ mở cửa</span>
+                              <i className="bi bi-chevron-right small"></i>
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -1329,7 +1584,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                       </p>
                     </div>
 
-                    <div className="d-flex align-items-center gap-2">
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
                       <select
                         className="form-select form-select-sm"
                         value={courtSportFilter}
@@ -1341,6 +1596,15 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                           <option key={st.sport_type_id} value={st.name}>{st.name}</option>
                         ))}
                       </select>
+
+                      <button
+                        type="button"
+                        className="btn btn-outline-success btn-sm d-flex align-items-center gap-1 rounded-3 shadow-xs"
+                        onClick={() => openTimeSlotsModal('single')}
+                      >
+                        <i className="bi bi-clock-history"></i>
+                        <span>Thiết lập khung giờ ({activeTimeSlots.length})</span>
+                      </button>
 
                       <button
                         className="btn btn-brand btn-sm d-flex align-items-center gap-1 rounded-3 shadow-sm"
@@ -1527,6 +1791,13 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
 
                       <div className="col-md-4 text-md-end d-flex justify-content-md-end gap-2 flex-wrap">
                         <button
+                          type="button"
+                          className="btn btn-outline-primary btn-sm rounded-pill shadow-xs"
+                          onClick={() => openTimeSlotsModal('single')}
+                        >
+                          <i className="bi bi-clock-history me-1"></i> Thiết lập khung giờ ({activeTimeSlots.length})
+                        </button>
+                        <button
                           className="btn btn-outline-danger btn-sm rounded-pill shadow-xs"
                           onClick={() => openBlockModal()}
                           disabled={activeTimeSlots.length === 0}
@@ -1576,9 +1847,20 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                           {currentSubCourts.length === 0 || activeTimeSlots.length === 0 ? (
                             <tr>
                               <td colSpan={Math.max(2, currentSubCourts.length + 1)} className="text-muted py-4">
-                                {currentSubCourts.length === 0
-                                  ? 'Chưa có sân con nào trong cụm sân này. Hãy thêm sân con ở tab Quản lý Sân.'
-                                  : 'Cụm sân chưa có khung giờ hoạt động nào.'}
+                                {currentSubCourts.length === 0 ? (
+                                  'Chưa có sân con nào trong cụm sân này. Hãy thêm sân con ở tab Quản lý Sân.'
+                                ) : (
+                                  <div className="d-flex flex-column align-items-center gap-2">
+                                    <span>Cụm sân chưa có khung giờ hoạt động nào.</span>
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-brand rounded-pill px-3"
+                                      onClick={() => openTimeSlotsModal('batch')}
+                                    >
+                                      <i className="bi bi-clock-history me-1"></i> Thiết lập khung giờ ngay
+                                    </button>
+                                  </div>
+                                )}
                               </td>
                             </tr>
                           ) : activeTimeSlots.map((slot) => {
@@ -2072,7 +2354,7 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                     </div>
                   </div>
 
-                  <div className="col-lg-4">
+                  <div className="col-lg-4 d-flex flex-column gap-4">
                     <div className="card border-0 shadow-sm rounded-3 p-4 bg-white text-center">
                       <h6 className="fw-bold text-dark mb-3">Mã VietQR Thanh Toán Của Cơ Sở</h6>
                       <div className="bg-light p-3 rounded-3 mb-3 d-inline-block border">
@@ -2087,9 +2369,43 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                       <div className="small text-muted">
                         {settingsForm.bank_name || 'Chưa có ngân hàng'} - {settingsForm.bank_account_no || 'Chưa có STK'}
                       </div>
-                      <p className="text-muted small mt-2" style={{ fontSize: '0.75rem' }}>
+                      <p className="text-muted small mt-2 mb-0" style={{ fontSize: '0.75rem' }}>
                         Mã QR cập nhật trực tiếp theo thông tin tài khoản bạn nhập để khách quét chuyển khoản khi đặt sân.
                       </p>
+                    </div>
+
+                    <div className="card border-0 shadow-sm rounded-3 p-4 bg-white">
+                      <div className="d-flex justify-content-between align-items-center mb-2">
+                        <h6 className="fw-bold text-dark mb-0">
+                          <i className="bi bi-clock-history text-brand me-2"></i>
+                          Khung Giờ Hoạt Động
+                        </h6>
+                        <span className="badge bg-success-subtle text-success border border-success-subtle">
+                          {activeTimeSlots.length} đang mở
+                        </span>
+                      </div>
+                      <div className="small text-muted mb-3">
+                        Giờ mở cửa hiện tại: <strong className="text-dark">{currentFacility.openTime}</strong>
+                      </div>
+                      <div className="d-flex flex-wrap gap-1 mb-3">
+                        {activeTimeSlots.slice(0, 8).map((s) => (
+                          <span key={s.slotId} className="badge bg-light text-dark border fw-normal">
+                            {s.label} {s.isPeak ? '⭐' : ''}
+                          </span>
+                        ))}
+                        {activeTimeSlots.length > 8 && (
+                          <span className="badge bg-secondary-subtle text-secondary fw-normal">
+                            +{activeTimeSlots.length - 8} ca khác
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-outline-success btn-sm w-100 rounded-3 fw-semibold"
+                        onClick={() => openTimeSlotsModal('single')}
+                      >
+                        <i className="bi bi-sliders me-1"></i> Tùy chỉnh khung giờ đặt sân
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -2517,6 +2833,25 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                       <label className="form-label small fw-semibold">Tiện Ích & Mô Tả Cụm Sân</label>
                       <input type="text" name="description" className="form-control" defaultValue="Bãi đỗ xe, Đèn Led ban đêm, Phòng thay đồ" />
                     </div>
+
+                    <div className="col-md-4">
+                      <label className="form-label small fw-semibold">Giờ mở cửa mặc định</label>
+                      <input type="time" name="openTime" className="form-control" defaultValue="06:00" />
+                    </div>
+                    <div className="col-md-4">
+                      <label className="form-label small fw-semibold">Giờ đóng cửa mặc định</label>
+                      <input type="time" name="closeTime" className="form-control" defaultValue="22:00" />
+                    </div>
+                    <div className="col-md-4">
+                      <label className="form-label small fw-semibold">Thời lượng mỗi ca</label>
+                      <select name="slotDuration" className="form-select" defaultValue="60">
+                        <option value="30">30 phút / ca</option>
+                        <option value="45">45 phút / ca</option>
+                        <option value="60">60 phút (1 giờ)</option>
+                        <option value="90">90 phút (1.5 giờ)</option>
+                        <option value="120">120 phút (2 giờ)</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
@@ -2612,6 +2947,443 @@ export default function OwnerDashboard({ currentUser, onBackToHome, onLogout, on
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL 6: THIẾT LẬP & QUẢN LÝ KHUNG GIỜ (TIME SLOTS -> POSTGRESQL)
+          ======================================================== */}
+      {showTimeSlotsModal && currentFacility && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1055 }}>
+          <div className="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div className="modal-content border-0 shadow-lg rounded-4">
+              <div className="modal-header bg-brand-dark text-white">
+                <div>
+                  <h5 className="modal-title fw-bold mb-0">
+                    <i className="bi bi-clock-history me-2"></i>
+                    Thiết Lập Khung Giờ Hoạt Động: {currentFacility.name}
+                  </h5>
+                  <div className="small text-white-50">
+                    Tự tạo khung giờ theo mô hình sân, chọn Giờ vàng (Peak ⭐) và bật/tắt nhận đặt trực tuyến
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn-close btn-close-white"
+                  onClick={() => setShowTimeSlotsModal(false)}
+                ></button>
+              </div>
+
+              <div className="modal-body p-4 bg-light">
+                {slotModalError && (
+                  <div className="alert alert-danger py-2 small mb-3 d-flex align-items-center justify-content-between">
+                    <span>
+                      <i className="bi bi-exclamation-triangle-fill me-2"></i>
+                      {slotModalError}
+                    </span>
+                    <button type="button" className="btn-close btn-sm" onClick={() => setSlotModalError('')}></button>
+                  </div>
+                )}
+
+                <div className="row g-4">
+                  {/* Left: Single Slot Form OR Batch Generator */}
+                  <div className="col-lg-5">
+                    <div className="card border-0 shadow-sm rounded-3 bg-white p-3 h-100">
+                      <div className="btn-group w-100 mb-3" role="group">
+                        <button
+                          type="button"
+                          className={`btn btn-sm fw-semibold ${slotModalMode === 'single' ? 'btn-brand' : 'btn-outline-secondary'}`}
+                          onClick={() => { setSlotModalError(''); setSlotModalMode('single'); }}
+                        >
+                          <i className="bi bi-plus-circle me-1"></i>
+                          {editingTimeSlot ? 'Đang sửa khung giờ' : 'Thêm từng khung giờ'}
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm fw-semibold ${slotModalMode === 'batch' ? 'btn-brand' : 'btn-outline-secondary'}`}
+                          onClick={() => { setSlotModalError(''); setEditingTimeSlot(null); setSlotModalMode('batch'); }}
+                        >
+                          <i className="bi bi-lightning-charge me-1"></i>
+                          Tạo nhanh hàng loạt
+                        </button>
+                      </div>
+
+                      {slotModalMode === 'single' ? (
+                        <form onSubmit={handleSaveSingleSlot}>
+                          {editingTimeSlot?.bookingCount > 0 && (
+                            <div className="alert alert-info py-2 px-3 small mb-3">
+                              Khung giờ <strong>{editingTimeSlot.label}</strong> đã có {editingTimeSlot.bookingCount} đơn đặt nên mốc giờ được giữ nguyên; bạn vẫn có thể đổi <strong>Giờ vàng</strong> hoặc <strong>Tạm ẩn</strong>.
+                            </div>
+                          )}
+
+                          <div className="row g-2 mb-3">
+                            <div className="col-6">
+                              <label className="form-label small fw-semibold">Giờ bắt đầu (*)</label>
+                              <input
+                                type="time"
+                                className="form-control"
+                                required
+                                disabled={Boolean(editingTimeSlot?.bookingCount > 0)}
+                                value={slotForm.startTime}
+                                onChange={(e) => {
+                                  const nextStart = e.target.value;
+                                  const mins = timeToMinutes(nextStart);
+                                  setSlotForm((prev) => ({
+                                    ...prev,
+                                    startTime: nextStart,
+                                    isPeak: mins !== null ? (mins >= 17 * 60 && mins < 21 * 60) : prev.isPeak
+                                  }));
+                                }}
+                              />
+                            </div>
+                            <div className="col-6">
+                              <label className="form-label small fw-semibold">Giờ kết thúc (*)</label>
+                              <input
+                                type="time"
+                                className="form-control"
+                                required
+                                disabled={Boolean(editingTimeSlot?.bookingCount > 0)}
+                                value={slotForm.endTime}
+                                onChange={(e) => setSlotForm((prev) => ({ ...prev, endTime: e.target.value }))}
+                              />
+                            </div>
+                          </div>
+
+                          {!(editingTimeSlot?.bookingCount > 0) && (
+                            <div className="mb-3">
+                              <div className="small text-muted mb-1">Chọn nhanh thời lượng từ giờ bắt đầu:</div>
+                              <div className="d-flex flex-wrap gap-1">
+                                {[30, 60, 90, 120].map((mins) => (
+                                  <button
+                                    key={mins}
+                                    type="button"
+                                    className="btn btn-outline-secondary btn-sm py-0 px-2"
+                                    style={{ fontSize: '0.78rem' }}
+                                    onClick={() =>
+                                      setSlotForm((prev) => ({
+                                        ...prev,
+                                        endTime: addMinutesToHHMM(prev.startTime, mins)
+                                      }))
+                                    }
+                                  >
+                                    +{mins} phút
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="bg-light rounded-3 p-3 mb-3 d-flex flex-column gap-2">
+                            <div className="form-check form-switch mb-0">
+                              <input
+                                type="checkbox"
+                                className="form-check-input"
+                                id="slotIsPeakSwitch"
+                                checked={slotForm.isPeak}
+                                onChange={(e) => setSlotForm((prev) => ({ ...prev, isPeak: e.target.checked }))}
+                              />
+                              <label className="form-check-label small fw-semibold" htmlFor="slotIsPeakSwitch">
+                                ⭐ Áp dụng giá Giờ vàng (Peak Price)
+                              </label>
+                            </div>
+                            <div className="form-check form-switch mb-0">
+                              <input
+                                type="checkbox"
+                                className="form-check-input"
+                                id="slotIsActiveSwitch"
+                                checked={slotForm.isActive}
+                                onChange={(e) => setSlotForm((prev) => ({ ...prev, isActive: e.target.checked }))}
+                              />
+                              <label className="form-check-label small fw-semibold" htmlFor="slotIsActiveSwitch">
+                                Mở hiển thị cho khách đặt ngay
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="d-flex gap-2">
+                            {editingTimeSlot && (
+                              <button
+                                type="button"
+                                className="btn btn-outline-secondary"
+                                onClick={handleResetSlotForm}
+                              >
+                                Hủy sửa
+                              </button>
+                            )}
+                            <button
+                              type="submit"
+                              disabled={slotSaving}
+                              className="btn btn-brand flex-grow-1 fw-semibold"
+                            >
+                              {slotSaving
+                                ? 'Đang lưu...'
+                                : editingTimeSlot
+                                  ? 'Lưu Thay Đổi'
+                                  : 'Thêm Khung Giờ'}
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <form onSubmit={handleGenerateBatchSlots}>
+                          <div className="row g-2 mb-3">
+                            <div className="col-6">
+                              <label className="form-label small fw-semibold">Từ giờ (*)</label>
+                              <input
+                                type="time"
+                                className="form-control"
+                                required
+                                value={batchSlotForm.openTime}
+                                onChange={(e) => setBatchSlotForm((prev) => ({ ...prev, openTime: e.target.value }))}
+                              />
+                            </div>
+                            <div className="col-6">
+                              <label className="form-label small fw-semibold">Đến giờ (*)</label>
+                              <input
+                                type="time"
+                                className="form-control"
+                                required
+                                value={batchSlotForm.closeTime}
+                                onChange={(e) => setBatchSlotForm((prev) => ({ ...prev, closeTime: e.target.value }))}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mb-3">
+                            <label className="form-label small fw-semibold">Thời lượng mỗi khung giờ</label>
+                            <select
+                              className="form-select"
+                              value={batchSlotForm.durationMinutes}
+                              onChange={(e) => setBatchSlotForm((prev) => ({ ...prev, durationMinutes: Number(e.target.value) }))}
+                            >
+                              <option value={30}>30 phút / ca</option>
+                              <option value={45}>45 phút / ca</option>
+                              <option value={60}>60 phút (1 giờ / ca)</option>
+                              <option value={90}>90 phút (1.5 giờ / ca)</option>
+                              <option value={120}>120 phút (2 giờ / ca)</option>
+                            </select>
+                          </div>
+
+                          <div className="bg-light rounded-3 p-3 mb-3">
+                            <div className="form-check form-switch mb-2">
+                              <input
+                                type="checkbox"
+                                className="form-check-input"
+                                id="batchPeakToggle"
+                                checked={batchSlotForm.applyPeak}
+                                onChange={(e) => setBatchSlotForm((prev) => ({ ...prev, applyPeak: e.target.checked }))}
+                              />
+                              <label className="form-check-label small fw-semibold" htmlFor="batchPeakToggle">
+                                ⭐ Tự động đánh dấu Giờ vàng trong khoảng:
+                              </label>
+                            </div>
+                            {batchSlotForm.applyPeak && (
+                              <div className="row g-2">
+                                <div className="col-6">
+                                  <input
+                                    type="time"
+                                    className="form-control form-control-sm"
+                                    value={batchSlotForm.peakStart}
+                                    onChange={(e) => setBatchSlotForm((prev) => ({ ...prev, peakStart: e.target.value }))}
+                                  />
+                                </div>
+                                <div className="col-6">
+                                  <input
+                                    type="time"
+                                    className="form-control form-control-sm"
+                                    value={batchSlotForm.peakEnd}
+                                    onChange={(e) => setBatchSlotForm((prev) => ({ ...prev, peakEnd: e.target.value }))}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="form-check mb-3">
+                            <input
+                              type="checkbox"
+                              className="form-check-input"
+                              id="batchReplaceToggle"
+                              checked={batchSlotForm.replaceExisting}
+                              onChange={(e) => setBatchSlotForm((prev) => ({ ...prev, replaceExisting: e.target.checked }))}
+                            />
+                            <label className="form-check-label small" htmlFor="batchReplaceToggle">
+                              Thay thế toàn bộ khung giờ hiện tại (nếu bỏ chọn sẽ chỉ thêm các ca chưa trùng)
+                            </label>
+                          </div>
+
+                          <div className="alert alert-success py-2 px-3 small mb-3">
+                            <i className="bi bi-calendar2-range me-1"></i>
+                            Dự kiến tạo{' '}
+                            <strong>
+                              {estimateGeneratedSlotsCount(
+                                batchSlotForm.openTime,
+                                batchSlotForm.closeTime,
+                                batchSlotForm.durationMinutes
+                              )}
+                            </strong>{' '}
+                            khung giờ ({batchSlotForm.openTime} - {batchSlotForm.closeTime}, mỗi ca {batchSlotForm.durationMinutes}p).
+                          </div>
+
+                          <button
+                            type="submit"
+                            disabled={
+                              slotSaving ||
+                              estimateGeneratedSlotsCount(
+                                batchSlotForm.openTime,
+                                batchSlotForm.closeTime,
+                                batchSlotForm.durationMinutes
+                              ) === 0
+                            }
+                            className="btn btn-brand w-100 fw-semibold"
+                          >
+                            {slotSaving ? 'Đang xử lý...' : 'Tạo Nhanh Hàng Loạt'}
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right: Current Time Slots Table */}
+                  <div className="col-lg-7">
+                    <div className="card border-0 shadow-sm rounded-3 bg-white p-3 h-100">
+                      <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                        <div>
+                          <h6 className="fw-bold text-dark mb-0">
+                            Danh sách khung giờ ({timeSlots.length})
+                          </h6>
+                          <span className="small text-muted">
+                            {timeSlots.filter(s => s.isActive).length} đang mở đặt •{' '}
+                            {timeSlots.filter(s => !s.isActive).length} tạm ẩn
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={() => loadTimeSlots(currentFacility.id)}
+                          disabled={timeSlotsLoading}
+                        >
+                          <i className="bi bi-arrow-clockwise me-1"></i>Làm mới
+                        </button>
+                      </div>
+
+                      {timeSlotsLoading ? (
+                        <div className="text-center py-5 text-muted small">
+                          <div className="spinner-border spinner-border-sm text-success me-2"></div>
+                          Đang tải khung giờ từ PostgreSQL...
+                        </div>
+                      ) : timeSlots.length === 0 ? (
+                        <div className="text-center py-5 text-muted small">
+                          <i className="bi bi-clock fs-2 d-block mb-2"></i>
+                          Chưa có khung giờ nào. Hãy thêm khung giờ lẻ hoặc bấm <strong>Tạo nhanh hàng loạt</strong> bên trái!
+                        </div>
+                      ) : (
+                        <div className="table-responsive" style={{ maxHeight: '430px', overflowY: 'auto' }}>
+                          <table className="table table-hover align-middle mb-0 small">
+                            <thead className="table-light sticky-top">
+                              <tr>
+                                <th>KHUNG GIỜ</th>
+                                <th>THỜI LƯỢNG</th>
+                                <th>LOẠI GIÁ</th>
+                                <th>TRẠNG THÁI</th>
+                                <th className="text-center">ĐÃ ĐẶT</th>
+                                <th className="text-end">THAO TÁC</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {timeSlots.map((slot) => (
+                                <tr
+                                  key={slot.slotId}
+                                  className={!slot.isActive ? 'table-light text-muted' : undefined}
+                                >
+                                  <td className="fw-bold text-nowrap">
+                                    <i className="bi bi-clock me-1 text-secondary"></i>
+                                    {slot.label}
+                                  </td>
+                                  <td>{slot.durationMinutes} phút</td>
+                                  <td>
+                                    <button
+                                      type="button"
+                                      disabled={slotSaving}
+                                      className={`btn btn-sm py-0 px-2 rounded-pill fw-semibold ${
+                                        slot.isPeak
+                                          ? 'btn-warning text-dark'
+                                          : 'btn-outline-secondary'
+                                      }`}
+                                      style={{ fontSize: '0.72rem' }}
+                                      title="Bấm để chuyển đổi Giờ vàng / Giờ thường"
+                                      onClick={() => handleToggleSlotField(slot, 'isPeak')}
+                                    >
+                                      {slot.isPeak ? '⭐ Giờ vàng' : 'Giờ thường'}
+                                    </button>
+                                  </td>
+                                  <td>
+                                    <button
+                                      type="button"
+                                      disabled={slotSaving}
+                                      className={`btn btn-sm py-0 px-2 rounded-pill fw-semibold border ${
+                                        slot.isActive
+                                          ? 'bg-success-subtle text-success border-success-subtle'
+                                          : 'bg-secondary-subtle text-secondary border-secondary-subtle'
+                                      }`}
+                                      style={{ fontSize: '0.72rem' }}
+                                      title="Bấm để bật / tạm ẩn khung giờ"
+                                      onClick={() => handleToggleSlotField(slot, 'isActive')}
+                                    >
+                                      {slot.isActive ? 'Đang mở' : 'Tạm ẩn'}
+                                    </button>
+                                  </td>
+                                  <td className="text-center">
+                                    {slot.bookingCount > 0 ? (
+                                      <span className="badge bg-primary-subtle text-primary" title={`${slot.activeBookingCount} đơn đang hoạt động`}>
+                                        {slot.bookingCount} đơn
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted">0</span>
+                                    )}
+                                  </td>
+                                  <td className="text-end">
+                                    <div className="btn-group btn-group-sm">
+                                      <button
+                                        type="button"
+                                        className="btn btn-outline-secondary"
+                                        title="Sửa khung giờ"
+                                        onClick={() => handleSelectSlotToEdit(slot)}
+                                      >
+                                        <i className="bi bi-pencil"></i>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="btn btn-outline-danger"
+                                        disabled={slotSaving}
+                                        title={slot.bookingCount > 0 ? 'Tạm ẩn khung giờ (đã có đơn đặt)' : 'Xóa khung giờ'}
+                                        onClick={() => handleDeleteTimeSlot(slot)}
+                                      >
+                                        <i className={`bi ${slot.bookingCount > 0 ? 'bi-eye-slash' : 'bi-trash'}`}></i>
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer bg-white">
+                <button
+                  type="button"
+                  className="btn btn-secondary px-4"
+                  onClick={() => setShowTimeSlotsModal(false)}
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -185,6 +185,12 @@ export default function CourtDetailPage({
     ? selectedSlot.price
     : selectedSubCourt?.normalPrice || detail?.pricePerHour || 200000;
 
+  const formatDurationLabel = (mins) => {
+    const val = Number(mins || 60);
+    if (val % 60 === 0) return `${val / 60} giờ`;
+    return `${val} phút`;
+  };
+
   return (
     <div className="bg-light flex-grow-1 pb-5">
       {/* Main Container */}
@@ -534,9 +540,13 @@ export default function CourtDetailPage({
               {/* Price Calculation & Checkout */}
               <div className="pt-3 border-top mb-3">
                 <div className="d-flex justify-content-between align-items-baseline mb-1">
-                  <span className="text-muted small">Tổng cộng (1 giờ):</span>
+                  <span className="text-muted small">
+                    Tổng cộng ({formatDurationLabel(selectedSlot?.durationMinutes)}):
+                  </span>
                   <span className="small text-muted fw-semibold">
-                    {selectedSlot ? `${selectedSlot.slot} • ` : ''}{selectedDate.dateNum}/{selectedDate.monthStr}
+                    {selectedSlot?.isPeak ? 'Giờ vàng ⭐ • ' : ''}
+                    {selectedSlot ? `${selectedSlot.slot} • ` : ''}
+                    {selectedDate.dateNum}/{selectedDate.monthStr}
                   </span>
                 </div>
                 <div className="fs-3 fw-bold text-brand-dark mb-3">

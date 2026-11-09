@@ -13,6 +13,11 @@ const isPeakHour = (startTimeStr) => {
   return hour >= 17 && hour < 21;
 };
 
+const resolvePeakFlag = (isPeakValue, startTimeStr) => {
+  if (typeof isPeakValue === 'boolean') return isPeakValue;
+  return isPeakHour(startTimeStr);
+};
+
 const parseBookingNumericId = (rawId) => {
   const cleaned = String(rawId || '').replace(/^BK-/i, '').trim();
   const id = Number(cleaned);
@@ -283,7 +288,8 @@ router.post('/', async (req, res) => {
                 TO_CHAR(start_time, 'HH24:MI') AS start_label,
                 TO_CHAR(end_time, 'HH24:MI') AS end_label,
                 TO_CHAR(start_time, 'HH24:MI:SS') AS start_full,
-                TO_CHAR(end_time, 'HH24:MI:SS') AS end_full
+                TO_CHAR(end_time, 'HH24:MI:SS') AS end_full,
+                is_peak
          FROM time_slots
          WHERE slot_id = $1 AND court_id = $2 AND is_active = TRUE`,
         [parsedSlotId, parsedCourtId]
@@ -294,7 +300,8 @@ router.post('/', async (req, res) => {
                 TO_CHAR(start_time, 'HH24:MI') AS start_label,
                 TO_CHAR(end_time, 'HH24:MI') AS end_label,
                 TO_CHAR(start_time, 'HH24:MI:SS') AS start_full,
-                TO_CHAR(end_time, 'HH24:MI:SS') AS end_full
+                TO_CHAR(end_time, 'HH24:MI:SS') AS end_full,
+                is_peak
          FROM time_slots
          WHERE court_id = $1 AND is_active = TRUE
            AND (TO_CHAR(start_time, 'HH24:MI') || ' - ' || TO_CHAR(end_time, 'HH24:MI')) = $2
@@ -314,7 +321,7 @@ router.post('/', async (req, res) => {
     const slotRow = slotRes.rows[0];
     const resolvedSlotId = Number(slotRow.slot_id);
     const resolvedSlotLabel = `${slotRow.start_label} - ${slotRow.end_label}`;
-    const authoritativePrice = isPeakHour(slotRow.start_full) ? peakPrice : normalPrice;
+    const authoritativePrice = resolvePeakFlag(slotRow.is_peak, slotRow.start_full) ? peakPrice : normalPrice;
 
     // 4. Kiểm tra lịch khóa sân (court_blocks)
     const slotStartTs = `${date} ${slotRow.start_full}`;

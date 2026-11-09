@@ -9,6 +9,11 @@ const {
   createSubCourt,
   updateSubCourt,
   deleteSubCourt,
+  getOwnerTimeSlots,
+  createOwnerTimeSlot,
+  updateOwnerTimeSlot,
+  deleteOwnerTimeSlot,
+  generateOwnerTimeSlots,
   getOwnerBookings,
   getOwnerSchedule,
   createWalkInBooking,
@@ -30,6 +35,12 @@ router.get('/courts', authMiddleware, getMyCourts);
 router.post('/courts', authMiddleware, createSubCourt);
 router.put('/courts/:subCourtId', authMiddleware, updateSubCourt);
 router.delete('/courts/:subCourtId', authMiddleware, deleteSubCourt);
+
+router.get('/time-slots', authMiddleware, getOwnerTimeSlots);
+router.post('/time-slots', authMiddleware, createOwnerTimeSlot);
+router.post('/time-slots/generate', authMiddleware, generateOwnerTimeSlots);
+router.put('/time-slots/:slotId', authMiddleware, updateOwnerTimeSlot);
+router.delete('/time-slots/:slotId', authMiddleware, deleteOwnerTimeSlot);
 
 router.get('/bookings', authMiddleware, getOwnerBookings);
 router.post('/bookings/walk-in', authMiddleware, createWalkInBooking);

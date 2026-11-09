@@ -22,6 +22,21 @@ const isPeakHour = (startTimeStr) => {
   return hour >= 17 && hour < 21;
 };
 
+const resolvePeakFlag = (isPeakValue, startTimeStr) => {
+  if (typeof isPeakValue === 'boolean') return isPeakValue;
+  return isPeakHour(startTimeStr);
+};
+
+const calcSlotDurationMinutes = (startHHMM, endHHMM) => {
+  const toMins = (t) => {
+    const [h, m] = String(t || '').split(':').map(Number);
+    return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+  };
+  const s = toMins(startHHMM);
+  const e = toMins(endHHMM);
+  return s !== null && e !== null && e > s ? e - s : 60;
+};
+
 // GET /api/courts/sport-types - Danh sách bộ môn thể thao đang hoạt động
 router.get('/sport-types', async (req, res) => {
   if (isDbConnected()) {
@@ -66,7 +81,9 @@ router.get('/', async (req, res) => {
           c.is_visible,
           c.created_at,
           COALESCE(sc_stats.sub_court_count, 0) AS sub_court_count,
-          COALESCE(sc_stats.min_price, c.price_per_slot) AS effective_min_price
+          COALESCE(sc_stats.min_price, c.price_per_slot) AS effective_min_price,
+          ts_stats.open_time_range,
+          ts_stats.slot_labels
         FROM courts c
         LEFT JOIN sport_types st ON c.sport_type_id = st.sport_type_id
         LEFT JOIN (
@@ -76,6 +93,18 @@ router.get('/', async (req, res) => {
           FROM sub_courts
           GROUP BY court_id
         ) sc_stats ON sc_stats.court_id = c.court_id
+        LEFT JOIN (
+          SELECT court_id,
+                 CASE
+                   WHEN MIN(start_time) IS NOT NULL AND MAX(end_time) IS NOT NULL
+                   THEN TO_CHAR(MIN(start_time), 'HH24:MI') || ' - ' || TO_CHAR(MAX(end_time), 'HH24:MI')
+                   ELSE NULL
+                 END AS open_time_range,
+                 ARRAY_AGG(TO_CHAR(start_time, 'HH24:MI') || ' - ' || TO_CHAR(end_time, 'HH24:MI') ORDER BY start_time ASC) AS slot_labels
+          FROM time_slots
+          WHERE is_active = TRUE
+          GROUP BY court_id
+        ) ts_stats ON ts_stats.court_id = c.court_id
         WHERE c.is_visible = TRUE AND c.operational_status = 'ACTIVE'
       `;
       const values = [];
@@ -136,9 +165,9 @@ router.get('/', async (req, res) => {
           imageUrl: fallback ? fallback.imageUrl : FACILITY_IMAGES[(idNum - 1) % FACILITY_IMAGES.length],
           amenities: row.description ? row.description.split(',').map(s => s.trim()).filter(Boolean) : (fallback ? fallback.amenities : []),
           subCourtCount: Number(row.sub_court_count || 0),
-          openTime: '06:00 - 22:00',
+          openTime: row.open_time_range || 'Chưa thiết lập giờ',
           featured: true,
-          availableSlots: ["06:00 - 07:00", "07:00 - 08:00", "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00", "19:00 - 20:00", "20:00 - 21:00", "21:00 - 22:00"]
+          availableSlots: Array.isArray(row.slot_labels) ? row.slot_labels : []
         };
       });
 
@@ -238,7 +267,8 @@ router.get('/:id/availability', async (req, res) => {
          TO_CHAR(start_time, 'HH24:MI') AS start_label,
          TO_CHAR(end_time, 'HH24:MI') AS end_label,
          TO_CHAR(start_time, 'HH24:MI:SS') AS start_full,
-         TO_CHAR(end_time, 'HH24:MI:SS') AS end_full
+         TO_CHAR(end_time, 'HH24:MI:SS') AS end_full,
+         is_peak
        FROM time_slots
        WHERE court_id = $1 AND is_active = TRUE
        ORDER BY start_time ASC`,
@@ -273,7 +303,8 @@ router.get('/:id/availability', async (req, res) => {
 
     const slots = slotsRes.rows.map((s) => {
       const slotId = Number(s.slot_id);
-      const peak = isPeakHour(s.start_full);
+      const peak = resolvePeakFlag(s.is_peak, s.start_full);
+      const durationMinutes = calcSlotDurationMinutes(s.start_label, s.end_label);
       const price = peak ? peakPrice : normalPrice;
       const slotLabel = `${s.start_label} - ${s.end_label}`;
       const slotStartStr = `${date} ${s.start_full}`;
@@ -302,6 +333,7 @@ router.get('/:id/availability', async (req, res) => {
         slot: slotLabel,
         startTime: s.start_label,
         endTime: s.end_label,
+        durationMinutes,
         isPeak: peak,
         price,
         priceFormatted: `${price.toLocaleString('vi-VN')}đ`,
@@ -384,7 +416,8 @@ router.get('/:id', async (req, res) => {
              slot_id,
              TO_CHAR(start_time, 'HH24:MI') AS start_label,
              TO_CHAR(end_time, 'HH24:MI') AS end_label,
-             TO_CHAR(start_time, 'HH24:MI:SS') AS start_full
+             TO_CHAR(start_time, 'HH24:MI:SS') AS start_full,
+             is_peak
            FROM time_slots
            WHERE court_id = $1 AND is_active = TRUE
            ORDER BY start_time ASC`,
@@ -408,8 +441,13 @@ router.get('/:id', async (req, res) => {
         const timeSlots = timeSlotsRes.rows.map(ts => ({
           slotId: Number(ts.slot_id),
           slot: `${ts.start_label} - ${ts.end_label}`,
-          isPeak: isPeakHour(ts.start_full)
+          durationMinutes: calcSlotDurationMinutes(ts.start_label, ts.end_label),
+          isPeak: resolvePeakFlag(ts.is_peak, ts.start_full)
         }));
+
+        const computedOpenTime = timeSlotsRes.rows.length > 0
+          ? `${timeSlotsRes.rows[0].start_label} - ${timeSlotsRes.rows.reduce((maxEnd, r) => (r.end_label > maxEnd ? r.end_label : maxEnd), timeSlotsRes.rows[0].end_label)}`
+          : 'Chưa mở giờ';
 
         return res.json({
           success: true,
@@ -428,7 +466,7 @@ router.get('/:id', async (req, res) => {
             priceFormatted: `${Number(row.price_per_hour).toLocaleString('vi-VN')}đ`,
             imageUrl: fallback ? fallback.imageUrl : FACILITY_IMAGES[(courtId - 1) % FACILITY_IMAGES.length],
             amenities: row.description ? row.description.split(',').map(s => s.trim()).filter(Boolean) : (fallback ? fallback.amenities : []),
-            openTime: '06:00 - 22:00',
+            openTime: computedOpenTime,
             subCourts,
             timeSlots
           }
