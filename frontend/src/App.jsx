@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Navbar from './components/Navbar';
 import HeroSection from './components/HeroSection';
 import SearchFilterBar from './components/SearchFilterBar';
@@ -12,6 +12,14 @@ import AuthPage from './components/AuthPage';
 import CourtDetailPage from './components/CourtDetailPage';
 import OwnerDashboard from './components/OwnerDashboard';
 import ProfilePage from './components/ProfilePage';
+
+const formatTodayLocal = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
 
 // Initial fallback courts identical to backend JSON & screenshot
 const INITIAL_COURTS = [
@@ -69,7 +77,7 @@ const INITIAL_COURTS = [
 ];
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('home'); // 'home' | 'login' | 'register' | 'profile'
+  const [currentView, setCurrentView] = useState('home'); // 'home' | 'login' | 'register' | 'register-owner' | 'profile' | 'owner-dashboard' | 'court-detail'
   const [currentUser, setCurrentUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
 
@@ -105,7 +113,7 @@ export default function App() {
   // Search & Filter state
   const [keyword, setKeyword] = useState('');
   const [selectedCity, setSelectedCity] = useState('TP. Hồ Chí Minh');
-  const [playDate, setPlayDate] = useState('2026-11-07');
+  const [playDate, setPlayDate] = useState(formatTodayLocal);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
 
@@ -116,19 +124,63 @@ export default function App() {
   const [showMyBookings, setShowMyBookings] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
-  // Bookings state
-  const [bookings, setBookings] = useState([
-    {
-      id: 'BK-101',
-      courtName: 'The Yard Padel Club Thảo Điền',
-      customerName: 'Nguyễn Văn Minh',
-      phone: '0901234567',
-      date: '2026-11-05',
-      timeSlot: '18:00 - 19:00',
-      totalPrice: 280000,
-      status: 'Đã xác nhận'
+  // Real bookings state (tải từ PostgreSQL)
+  const [bookings, setBookings] = useState([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [availabilityRefreshKey, setAvailabilityRefreshKey] = useState(0);
+
+  const loadMyBookings = useCallback(async () => {
+    const token = localStorage.getItem('sportsbooking_token') || sessionStorage.getItem('sportsbooking_token');
+    if (!token) {
+      setBookings([]);
+      return;
     }
-  ]);
+    setBookingsLoading(true);
+    try {
+      const res = await fetch('http://localhost:5000/api/bookings/my', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success && Array.isArray(json.data)) {
+        setBookings(json.data);
+      }
+    } catch {
+      // Bỏ qua lỗi mạng tạm thời
+    } finally {
+      setBookingsLoading(false);
+    }
+  }, []);
+
+  const lookupBookingsByPhone = async (phone) => {
+    setBookingsLoading(true);
+    try {
+      const res = await fetch(`http://localhost:5000/api/bookings?phone=${encodeURIComponent(phone)}`);
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success && Array.isArray(json.data)) {
+        setBookings(json.data);
+      } else {
+        setBookings([]);
+      }
+    } catch {
+      setBookings([]);
+    } finally {
+      setBookingsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser) {
+      loadMyBookings();
+    } else {
+      setBookings([]);
+    }
+  }, [currentUser, loadMyBookings]);
+
+  useEffect(() => {
+    if (showMyBookings && currentUser) {
+      loadMyBookings();
+    }
+  }, [showMyBookings, currentUser, loadMyBookings]);
 
   // Fetch courts from backend API
   const fetchCourts = async () => {
@@ -151,7 +203,6 @@ export default function App() {
       }
       throw new Error('Fallback to local filter');
     } catch {
-      // Offline/fallback filtering
       let filtered = [...INITIAL_COURTS];
       if (keyword) {
         const kw = keyword.toLowerCase();
@@ -193,8 +244,21 @@ export default function App() {
   };
 
   const handleBookingSuccess = (newBooking) => {
-    setBookings(prev => [newBooking, ...prev]);
+    setBookings(prev => [newBooking, ...prev.filter(b => b.id !== newBooking.id)]);
+    setAvailabilityRefreshKey(k => k + 1);
     showNotification(`🎉 Đặt sân thành công! Mã đặt chỗ của bạn là: ${newBooking.id}`);
+  };
+
+  const handleCancelSuccess = (bookingId, reason) => {
+    setBookings(prev =>
+      prev.map(b =>
+        b.id === bookingId
+          ? { ...b, status: 'CANCELLED', statusLabel: 'Đã hủy', cancelReason: reason }
+          : b
+      )
+    );
+    setAvailabilityRefreshKey(k => k + 1);
+    showNotification(`Đã hủy đơn đặt sân ${bookingId}.`);
   };
 
   const handleAuthSuccess = (userData, remember = true) => {
@@ -220,6 +284,7 @@ export default function App() {
 
   const handleLogout = () => {
     setCurrentUser(null);
+    setBookings([]);
     localStorage.removeItem('sportsbooking_user');
     localStorage.removeItem('sportsbooking_token');
     sessionStorage.removeItem('sportsbooking_token');
@@ -265,6 +330,11 @@ export default function App() {
         {showMyBookings && (
           <MyBookingsModal
             bookings={bookings}
+            loading={bookingsLoading}
+            currentUser={currentUser}
+            onRefreshBookings={loadMyBookings}
+            onLookupByPhone={lookupBookingsByPhone}
+            onCancelSuccess={handleCancelSuccess}
             onClose={() => setShowMyBookings(false)}
           />
         )}
@@ -288,6 +358,7 @@ export default function App() {
   if (currentView === 'owner-dashboard') {
     return (
       <OwnerDashboard
+        onOpenAuth={(mode) => setCurrentView(mode)}
         currentUser={currentUser}
         onBackToHome={() => {
           setCurrentView('home');
@@ -316,18 +387,25 @@ export default function App() {
 
         <CourtDetailPage
           court={selectedCourtDetail}
+          initialDate={playDate}
+          availabilityRefreshKey={availabilityRefreshKey}
           onBackToHome={() => {
             setCurrentView('home');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
           onProceedBooking={(bookingPlan) => {
             setSelectedCourtForBooking({
-              id: selectedCourtDetail?.id || 1,
+              id: bookingPlan.courtId || selectedCourtDetail?.id || 1,
               name: bookingPlan.courtName,
-              category: selectedCourtDetail?.category || 'BÓNG ĐÁ & PADEL',
+              category: bookingPlan.category || selectedCourtDetail?.category || 'THỂ THAO',
+              subCourtId: bookingPlan.subCourtId || null,
+              subCourtName: bookingPlan.subCourtName || '',
+              slotId: bookingPlan.slotId || null,
+              date: bookingPlan.date,
+              timeSlot: bookingPlan.timeSlot,
               pricePerHour: bookingPlan.price,
               priceFormatted: `${Number(bookingPlan.price).toLocaleString('vi-VN')}đ`,
-              imageUrl: selectedCourtDetail?.imageUrl || 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
+              imageUrl: bookingPlan.imageUrl || selectedCourtDetail?.imageUrl || 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
               availableSlots: [bookingPlan.timeSlot]
             });
           }}
@@ -336,11 +414,18 @@ export default function App() {
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
         />
 
+        <Footer
+          onOpenAuth={(mode) => setCurrentView(mode)}
+          onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+        />
+
         {selectedCourtForBooking && (
-          <BookingModal 
+          <BookingModal
             court={selectedCourtForBooking}
+            currentUser={currentUser}
             onClose={() => setSelectedCourtForBooking(null)}
             onBookingSuccess={handleBookingSuccess}
+            onSlotConflict={() => setAvailabilityRefreshKey(k => k + 1)}
           />
         )}
       </div>
@@ -351,8 +436,8 @@ export default function App() {
     <div className="min-vh-100 d-flex flex-column bg-white">
       {/* Toast Alert */}
       {toastMessage && (
-        <div 
-          className="position-fixed top-0 end-0 p-3" 
+        <div
+          className="position-fixed top-0 end-0 p-3"
           style={{ zIndex: 1100 }}
         >
           <div className="alert alert-success shadow-lg border-0 d-flex align-items-center gap-2 mb-0 py-3 px-4 rounded-3 text-dark">
@@ -360,9 +445,9 @@ export default function App() {
             <div>
               <strong>Thông báo:</strong> {toastMessage}
             </div>
-            <button 
-              type="button" 
-              className="btn-close ms-auto" 
+            <button
+              type="button"
+              className="btn-close ms-auto"
               onClick={() => setToastMessage('')}
             ></button>
           </div>
@@ -370,7 +455,7 @@ export default function App() {
       )}
 
       {/* Header / Navbar */}
-      <Navbar 
+      <Navbar
         onOpenAuth={(mode) => setCurrentView(mode)}
         onOpenMyBookings={() => setShowMyBookings(true)}
         onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
@@ -387,7 +472,7 @@ export default function App() {
         <HeroSection />
 
         {/* Floating Search & Filter Bar */}
-        <SearchFilterBar 
+        <SearchFilterBar
           onSearch={fetchCourts}
           onTabChange={handleTabChange}
           activeSearchTab={activeSearchTab}
@@ -404,7 +489,7 @@ export default function App() {
         />
 
         {/* Featured Courts Listing */}
-        <CourtList 
+        <CourtList
           courts={courts}
           loading={loading}
           onBookNow={(court) => {
@@ -415,7 +500,7 @@ export default function App() {
         />
 
         {/* Partner Section Banner */}
-        <PartnerBanner 
+        <PartnerBanner
           onOpenPartnerModal={() => setShowPartnerModal(true)}
           onOpenAuth={(mode) => setCurrentView(mode)}
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
@@ -423,30 +508,37 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <Footer 
-        onOpenAuth={(mode) => setCurrentView(mode)} 
-        onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')} 
+      <Footer
+        onOpenAuth={(mode) => setCurrentView(mode)}
+        onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
       />
 
       {/* Modals */}
       {selectedCourtForBooking && (
-        <BookingModal 
+        <BookingModal
           court={selectedCourtForBooking}
+          currentUser={currentUser}
           onClose={() => setSelectedCourtForBooking(null)}
           onBookingSuccess={handleBookingSuccess}
+          onSlotConflict={() => setAvailabilityRefreshKey(k => k + 1)}
         />
       )}
 
       {showPartnerModal && (
-        <PartnerModal 
+        <PartnerModal
           onClose={() => setShowPartnerModal(false)}
           onSuccess={(msg) => showNotification(msg)}
         />
       )}
 
       {showMyBookings && (
-        <MyBookingsModal 
+        <MyBookingsModal
           bookings={bookings}
+          loading={bookingsLoading}
+          currentUser={currentUser}
+          onRefreshBookings={loadMyBookings}
+          onLookupByPhone={lookupBookingsByPhone}
+          onCancelSuccess={handleCancelSuccess}
           onClose={() => {
             setShowMyBookings(false);
             setActiveSearchTab('search');

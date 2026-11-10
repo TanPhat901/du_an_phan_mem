@@ -1,56 +1,206 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
-export default function CourtDetailPage({ court, onBackToHome, onProceedBooking, currentUser, onOpenAuth }) {
-  // Court Types available for this venue
-  const courtTypes = [
-    { id: 1, name: 'Sân 1 - Cỏ 7 người (FIFA Pro)', price: 380000, priceFormatted: '380.000đ' },
-    { id: 2, name: 'Sân 2 - Cỏ 5 người tiêu chuẩn', price: 260000, priceFormatted: '260.000đ' },
-    { id: 3, name: 'Sân 3 - Padel Court Ngoài Trời', price: 320000, priceFormatted: '320.000đ' },
-  ];
+const formatLocalYMD = (dateObj) => {
+  const yyyy = dateObj.getFullYear();
+  const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const dd = String(dateObj.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
 
-  const [selectedCourtType, setSelectedCourtType] = useState(courtTypes[0]);
+const getDayMeta = (ymdStr, index) => {
+  const [y, m, d] = ymdStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  const vnDays = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+  const fullNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+  const dayIdx = dt.getDay();
+  return {
+    label: index === 0 ? 'Hôm nay' : index === 1 ? 'Ngày mai' : fullNames[dayIdx],
+    dateNum: String(d).padStart(2, '0'),
+    monthStr: String(m).padStart(2, '0'),
+    yearStr: String(y),
+    dayName: vnDays[dayIdx],
+    fullDate: ymdStr
+  };
+};
 
-  // Date picker options (Dynamic based on today)
+const buildDateOptions = (initialDate) => {
   const today = new Date();
-  const dateOptions = [
-    { label: 'Hôm nay', dateNum: today.getDate(), dayName: 'T7', fullDate: today.toISOString().split('T')[0] },
-    { label: 'Ngày mai', dateNum: today.getDate() + 1, dayName: 'CN', fullDate: new Date(today.getTime() + 86400000).toISOString().split('T')[0] },
-    { label: 'Thứ 2', dateNum: today.getDate() + 2, dayName: 'T2', fullDate: new Date(today.getTime() + 86400000 * 2).toISOString().split('T')[0] },
-    { label: 'Thứ 3', dateNum: today.getDate() + 3, dayName: 'T3', fullDate: new Date(today.getTime() + 86400000 * 3).toISOString().split('T')[0] },
-  ];
+  today.setHours(0, 0, 0, 0);
+  const todayYmd = formatLocalYMD(today);
 
-  const [selectedDate, setSelectedDate] = useState(dateOptions[0]);
+  let baseDate = today;
+  if (initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) && initialDate >= todayYmd) {
+    const [y, m, d] = initialDate.split('-').map(Number);
+    baseDate = new Date(y, m - 1, d);
+  }
 
-  // Time slots
-  const timeSlots = [
-    { slot: '16:00 - 17:00', status: 'booked', label: 'Đã kín chỗ' },
-    { slot: '17:00 - 18:00', status: 'booked', label: 'Đã kín chỗ' },
-    { slot: '18:00 - 19:00', status: 'booked', label: 'Đã kín chỗ' },
-    { slot: '19:00 - 20:00', status: 'available', price: '380k' },
-    { slot: '20:00 - 21:00', status: 'available', price: '380k' },
-    { slot: '21:00 - 22:00', status: 'available', price: '350k' },
-  ];
+  return [0, 1, 2, 3].map((offset) => {
+    const dt = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + offset);
+    const ymd = formatLocalYMD(dt);
+    return getDayMeta(ymd, ymd === todayYmd ? 0 : offset);
+  });
+};
 
-  const [selectedSlot, setSelectedSlot] = useState(timeSlots[4]); // default 20:00 - 21:00
+export default function CourtDetailPage({
+  court,
+  initialDate,
+  availabilityRefreshKey = 0,
+  onBackToHome,
+  onProceedBooking,
+  currentUser,
+  onOpenAuth,
+  onOpenOwnerDashboard
+}) {
+  const courtId = court?.id || 1;
+  const [detail, setDetail] = useState(court || null);
+  const [detailLoading, setDetailLoading] = useState(true);
+
+  const [subCourts, setSubCourts] = useState([]);
+  const [selectedSubCourt, setSelectedSubCourt] = useState(null);
+
+  const [dateOptions] = useState(() => buildDateOptions(initialDate));
+  const [selectedDate, setSelectedDate] = useState(() => buildDateOptions(initialDate)[0]);
+
+  const [slots, setSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(true);
+  const [slotsError, setSlotsError] = useState('');
+  const [selectedSlot, setSelectedSlot] = useState(null);
   const [isSaved, setIsSaved] = useState(false);
 
+  // Tải thông tin chi tiết cụm sân + danh sách sân con từ PostgreSQL
+  useEffect(() => {
+    let cancelled = false;
+    setDetailLoading(true);
+    fetch(`http://localhost:5000/api/courts/${courtId}`)
+      .then(async (res) => {
+        const json = await res.json();
+        if (!res.ok || !json.success || !json.data) {
+          throw new Error(json.message || 'Không thể tải chi tiết sân.');
+        }
+        return json.data;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setDetail(data);
+        const realSubCourts = Array.isArray(data.subCourts) ? data.subCourts : [];
+        if (realSubCourts.length > 0) {
+          setSubCourts(realSubCourts);
+          setSelectedSubCourt(realSubCourts[0]);
+        } else {
+          const fallbackSub = {
+            id: null,
+            name: `${data.name} (Sân tiêu chuẩn)`,
+            normalPrice: Number(data.pricePerHour || 200000),
+            peakPrice: Number(data.pricePerHour || 200000),
+            priceFormatted: `${Number(data.pricePerHour || 200000).toLocaleString('vi-VN')}đ`,
+            amenities: data.amenities || [],
+            imageUrl: data.imageUrl
+          };
+          setSubCourts([fallbackSub]);
+          setSelectedSubCourt(fallbackSub);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        if (court) {
+          setDetail(court);
+          const fallbackSub = {
+            id: null,
+            name: `${court.name} (Sân tiêu chuẩn)`,
+            normalPrice: Number(court.pricePerHour || 200000),
+            peakPrice: Number(court.pricePerHour || 200000),
+            priceFormatted: `${Number(court.pricePerHour || 200000).toLocaleString('vi-VN')}đ`,
+            amenities: court.amenities || [],
+            imageUrl: court.imageUrl
+          };
+          setSubCourts([fallbackSub]);
+          setSelectedSubCourt(fallbackSub);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [courtId]);
+
+  // Kiểm tra lịch trống thực tế theo ngày & sân con
+  const loadAvailability = useCallback(async () => {
+    if (!selectedDate?.fullDate) return;
+    setSlotsLoading(true);
+    setSlotsError('');
+    try {
+      const params = new URLSearchParams({ date: selectedDate.fullDate });
+      if (selectedSubCourt?.id) {
+        params.append('subCourtId', String(selectedSubCourt.id));
+      }
+      const res = await fetch(`http://localhost:5000/api/courts/${courtId}/availability?${params.toString()}`);
+      const json = await res.json();
+      if (!res.ok || !json.success || !json.data) {
+        throw new Error(json.message || 'Không thể kiểm tra khung giờ.');
+      }
+      const fetchedSlots = json.data.slots || [];
+      setSlots(fetchedSlots);
+      setSelectedSlot((prev) => {
+        if (prev) {
+          const same = fetchedSlots.find(s => s.slotId === prev.slotId && s.status === 'available');
+          if (same) return same;
+        }
+        return fetchedSlots.find(s => s.status === 'available') || null;
+      });
+    } catch (err) {
+      setSlotsError(err.message);
+      setSlots([]);
+      setSelectedSlot(null);
+    } finally {
+      setSlotsLoading(false);
+    }
+  }, [courtId, selectedDate?.fullDate, selectedSubCourt?.id]);
+
+  useEffect(() => {
+    loadAvailability();
+  }, [loadAvailability, availabilityRefreshKey]);
+
   const handleBooking = () => {
+    if (!selectedSlot || selectedSlot.status !== 'available') return;
     onProceedBooking({
-      courtName: court ? court.name : 'The Yard Sport Arena - Tổ hợp Cỏ Nhân Tạo & Padel Thảo Điền',
-      courtType: selectedCourtType.name,
-      price: selectedCourtType.price,
+      courtId,
+      courtName: detail?.name || court?.name || 'Sân thể thao',
+      category: detail?.category || court?.category || 'THỂ THAO',
+      subCourtId: selectedSubCourt?.id || null,
+      subCourtName: selectedSubCourt?.name || '',
+      slotId: selectedSlot.slotId,
+      price: selectedSlot.price,
       date: selectedDate.fullDate,
       timeSlot: selectedSlot.slot,
-      address: court ? court.address : '28 Đường Quốc Hương, P. Thảo Điền, TP. Thủ Đức'
+      address: detail?.address || court?.address || '',
+      imageUrl: selectedSubCourt?.imageUrl || detail?.imageUrl || court?.imageUrl
     });
   };
+
+  const displayAmenities =
+    selectedSubCourt?.amenities?.length > 0
+      ? selectedSubCourt.amenities
+      : detail?.amenities || ['Bãi đỗ xe', 'Đèn LED ban đêm', 'Phòng thay đồ'];
+
+  const activePrice = selectedSlot
+    ? selectedSlot.price
+    : selectedSubCourt?.normalPrice || detail?.pricePerHour || 200000;
 
   return (
     <div className="bg-light min-vh-100 pb-5">
       {/* Top Header Navbar */}
       <header className="navbar navbar-expand-lg bg-white border-bottom sticky-top py-3">
         <div className="container">
-          <a className="navbar-brand d-flex align-items-center gap-2" href="#" onClick={(e) => { e.preventDefault(); onBackToHome(); }}>
+          <a
+            className="navbar-brand d-flex align-items-center gap-2"
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              onBackToHome();
+            }}
+          >
             <div className="d-flex align-items-center justify-content-center bg-brand-light rounded-circle" style={{ width: '38px', height: '38px' }}>
               <i className="bi bi-trophy-fill text-brand fs-5"></i>
             </div>
@@ -60,8 +210,15 @@ export default function CourtDetailPage({ court, onBackToHome, onProceedBooking,
           <div className="d-none d-lg-flex align-items-center gap-4 mx-auto">
             <a href="#home" onClick={(e) => { e.preventDefault(); onBackToHome(); }} className="nav-link-custom">Trang chủ</a>
             <a href="#courts" onClick={(e) => { e.preventDefault(); onBackToHome(); }} className="nav-link-custom active">Tìm sân</a>
-            <a href="#bookings" onClick={(e) => { e.preventDefault(); onBackToHome(); }} className="nav-link-custom">Lịch đặt</a>
-            <a href="#guide" onClick={(e) => { e.preventDefault(); onBackToHome(); }} className="nav-link-custom">Hướng dẫn</a>
+            {currentUser?.role === 'OWNER' && onOpenOwnerDashboard && (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-success rounded-pill px-3"
+                onClick={onOpenOwnerDashboard}
+              >
+                <i className="bi bi-buildings-fill me-1"></i>Kênh Chủ Sân
+              </button>
+            )}
           </div>
 
           <div className="d-flex align-items-center gap-3">
@@ -89,7 +246,6 @@ export default function CourtDetailPage({ court, onBackToHome, onProceedBooking,
 
       {/* Main Container */}
       <div className="container py-4">
-        
         {/* Breadcrumb & Action Row */}
         <div className="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
           <nav aria-label="breadcrumb">
@@ -99,17 +255,16 @@ export default function CourtDetailPage({ court, onBackToHome, onProceedBooking,
                   <i className="bi bi-house-door me-1"></i>Trang chủ
                 </a>
               </li>
-              <li className="breadcrumb-item">
-                <a href="#" onClick={(e) => { e.preventDefault(); onBackToHome(); }} className="text-decoration-none text-muted">Tìm sân</a>
+              <li className="breadcrumb-item text-muted">{detail?.city || 'TP. Hồ Chí Minh'}</li>
+              <li className="breadcrumb-item active fw-semibold text-dark" aria-current="page">
+                {detail?.name || 'Chi tiết cụm sân'}
               </li>
-              <li className="breadcrumb-item text-muted">The Yard Club</li>
-              <li className="breadcrumb-item active fw-semibold text-dark" aria-current="page">Chi tiết sân</li>
             </ol>
           </nav>
 
           <div className="d-flex align-items-center gap-2">
-            <button 
-              type="button" 
+            <button
+              type="button"
               className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1 bg-white"
               onClick={() => {
                 navigator.clipboard?.writeText(window.location.href);
@@ -119,8 +274,8 @@ export default function CourtDetailPage({ court, onBackToHome, onProceedBooking,
               <i className="bi bi-share"></i>
               <span>Chia sẻ</span>
             </button>
-            <button 
-              type="button" 
+            <button
+              type="button"
               className={`btn btn-sm ${isSaved ? 'btn-danger' : 'btn-outline-secondary bg-white'} d-flex align-items-center gap-1`}
               onClick={() => setIsSaved(!isSaved)}
             >
@@ -134,167 +289,143 @@ export default function CourtDetailPage({ court, onBackToHome, onProceedBooking,
         <div className="mb-4">
           <div className="d-flex flex-wrap gap-2 mb-2">
             <span className="badge bg-success text-uppercase py-1 px-2 fw-bold" style={{ fontSize: '0.72rem' }}>
-              BÓNG ĐÁ 7 & 5 NGƯỜI
-            </span>
-            <span className="badge bg-success text-uppercase py-1 px-2 fw-bold" style={{ fontSize: '0.72rem' }}>
-              PADEL COURT QUỐC TẾ
+              {detail?.category || 'THỂ THAO'}
             </span>
             <span className="badge bg-secondary-subtle text-secondary py-1 px-2 fw-semibold" style={{ fontSize: '0.72rem' }}>
-              Chuẩn FIFA Pro
+              {subCourts.length} sân thi đấu
             </span>
-            <span className="badge bg-secondary-subtle text-secondary py-1 px-2 fw-semibold" style={{ fontSize: '0.72rem' }}>
-              Mặt sân bán phần
-            </span>
+            {detail?.openTime && (
+              <span className="badge bg-secondary-subtle text-secondary py-1 px-2 fw-semibold" style={{ fontSize: '0.72rem' }}>
+                Mở cửa: {detail.openTime}
+              </span>
+            )}
           </div>
 
           <h1 className="h2 fw-bold text-brand-dark mb-2">
-            The Yard Sport Arena - Tổ hợp Cỏ Nhân Tạo & Padel Thảo Điền
+            {detail?.name || 'Đang tải thông tin cụm sân...'}
           </h1>
 
           <div className="d-flex flex-wrap align-items-center gap-3 text-muted small">
             <div className="d-flex align-items-center gap-1 text-dark fw-bold">
               <i className="bi bi-star-fill text-warning"></i>
-              <span>4.9</span>
-              <span className="text-muted fw-normal">(186 đánh giá thực tế)</span>
-            </div>
-            <span>•</span>
-            <div className="d-flex align-items-center gap-1">
-              <i className="bi bi-trophy text-success"></i>
-              <span>Top 1 địa điểm thể thao yêu thích nhất TP. Thủ Đức</span>
+              <span>{detail?.rating || 4.9}</span>
+              <span className="text-muted fw-normal">({detail?.reviewCount || 120} đánh giá)</span>
             </div>
             <span>•</span>
             <div className="d-flex align-items-center gap-1">
               <i className="bi bi-geo-alt text-brand"></i>
-              <span>28 Đường Quốc Hương, P. Thảo Điền, TP. Thủ Đức</span>
-              <a 
-                href="#map" 
-                className="text-brand fw-semibold text-decoration-none ms-1"
-                onClick={(e) => { e.preventDefault(); alert('Địa chỉ sân: 28 Đường Quốc Hương, Phường Thảo Điền, TP. Thủ Đức (Đối diện trường Quốc Tế).'); }}
-              >
-                [🗺 Xem bản đồ]
-              </a>
+              <span>{detail?.address}</span>
             </div>
+            {detail?.ownerPhone && (
+              <>
+                <span>•</span>
+                <div className="d-flex align-items-center gap-1">
+                  <i className="bi bi-telephone text-success"></i>
+                  <span>Hotline: {detail.ownerPhone}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Photo Mosaic Gallery (5 Images) */}
+        {/* Photo Mosaic Gallery */}
         <div className="court-gallery-grid mb-5 shadow-sm">
-          {/* Main Soccer Pitch */}
           <div className="gallery-main-img">
-            <img 
-              src="https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=1200&q=80" 
-              alt="Mặt sân chính 7 người" 
+            <img
+              src={detail?.imageUrl || 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=1200&q=80'}
+              alt={detail?.name || 'Mặt sân chính'}
             />
             <div className="position-absolute bottom-0 start-0 m-3">
               <span className="badge bg-dark bg-opacity-75 text-white py-2 px-3 fw-semibold">
-                ● Mặt sân chính 7 người (FIFA Quality)
+                ● {selectedSubCourt?.name || detail?.name}
               </span>
             </div>
           </div>
 
-          {/* Sub Image 1: Padel court action */}
           <div className="gallery-sub-img">
-            <img 
-              src="https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=600&q=80" 
-              alt="Padel Court Đêm" 
+            <img
+              src={selectedSubCourt?.imageUrl || 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=600&q=80'}
+              alt="Sân thi đấu"
             />
           </div>
-
-          {/* Sub Image 2: Luxury shower & locker */}
           <div className="gallery-sub-img" style={{ borderRadius: '0 14px 0 0' }}>
-            <img 
-              src="https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=600&q=80" 
-              alt="Phòng thay đồ" 
+            <img
+              src="https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=600&q=80"
+              alt="Phòng thay đồ"
             />
           </div>
-
-          {/* Sub Image 3: Café / lounge */}
           <div className="gallery-sub-img">
-            <img 
-              src="https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80" 
-              alt="Quán Cafe & Giải khát" 
+            <img
+              src="https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80"
+              alt="Quầy dịch vụ"
             />
           </div>
-
-          {/* Sub Image 4: Goal post + button view all */}
           <div className="gallery-sub-img position-relative" style={{ borderRadius: '0 0 14px 0' }}>
-            <img 
-              src="https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=600&q=80" 
-              alt="Góc sân thi đấu" 
+            <img
+              src="https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=600&q=80"
+              alt="Góc sân thi đấu"
             />
-            <button 
-              type="button" 
-              className="btn btn-dark bg-opacity-80 border-0 btn-sm position-absolute bottom-0 end-0 m-3 d-flex align-items-center gap-1 rounded-pill px-3 py-1 text-white"
-              onClick={() => alert('Thư viện 18 ảnh chi tiết các góc sân The Yard Sport Arena.')}
-            >
-              <i className="bi bi-camera"></i>
-              <span>+ Xem tất cả 18 ảnh</span>
-            </button>
           </div>
         </div>
 
         {/* Two-Column Details & Sticky Booking Sidebar */}
         <div className="row g-4">
-          
-          {/* Left Column: Amenities & Reviews */}
+          {/* Left Column */}
           <div className="col-lg-7">
-            
+            {/* DANH SÁCH SÂN CON TẠI CƠ SỞ */}
+            <div className="bg-white rounded-4 p-4 border shadow-sm mb-4">
+              <div className="d-flex justify-content-between align-items-center mb-3">
+                <h5 className="fw-bold text-brand-dark mb-0">SÂN CON TẠI CƠ SỞ</h5>
+                <span className="text-muted small">{subCourts.length} lựa chọn khả dụng</span>
+              </div>
+              {detailLoading ? (
+                <div className="small text-muted">Đang tải danh sách sân con...</div>
+              ) : (
+                <div className="row g-3">
+                  {subCourts.map((sc, idx) => {
+                    const isSelected = sc.id === selectedSubCourt?.id && sc.name === selectedSubCourt?.name;
+                    return (
+                      <div key={sc.id || idx} className="col-md-6">
+                        <div
+                          className={`p-3 rounded-3 border h-100 ${isSelected ? 'border-success bg-success-subtle bg-opacity-25' : 'bg-light'}`}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => setSelectedSubCourt(sc)}
+                        >
+                          <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
+                            <div className="fw-bold text-dark small">{sc.name}</div>
+                            {isSelected && <span className="badge bg-success">Đang chọn</span>}
+                          </div>
+                          {sc.surfaceType && (
+                            <div className="text-muted mb-2" style={{ fontSize: '0.75rem' }}>
+                              <i className="bi bi-layers me-1"></i>{sc.surfaceType}
+                            </div>
+                          )}
+                          <div className="d-flex justify-content-between small">
+                            <span className="text-muted">Giờ thường: <strong>{Number(sc.normalPrice).toLocaleString('vi-VN')}đ</strong></span>
+                            <span className="text-brand fw-bold">Giờ vàng: {Number(sc.peakPrice).toLocaleString('vi-VN')}đ</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             {/* TIỆN ÍCH TẠI SÂN */}
             <div className="bg-white rounded-4 p-4 border shadow-sm mb-4">
               <div className="d-flex justify-content-between align-items-center mb-3">
                 <h5 className="fw-bold text-brand-dark mb-0">TIỆN ÍCH TẠI SÂN</h5>
-                <span className="text-muted small">Đầy đủ 8 tiện ích tiêu chuẩn</span>
+                <span className="text-muted small">{displayAmenities.length} tiện ích</span>
               </div>
 
-              <div className="row g-3 text-center">
-                <div className="col-3 col-sm-auto">
-                  <div className="facility-icon-box mb-1">
-                    <i className="bi bi-wifi"></i>
-                  </div>
-                  <div className="small fw-semibold text-dark">Wifi miễn phí</div>
-                </div>
-
-                <div className="col-3 col-sm-auto">
-                  <div className="facility-icon-box mb-1">
-                    <i className="bi bi-p-square"></i>
-                  </div>
-                  <div className="small fw-semibold text-dark">Bãi đỗ ô tô</div>
-                </div>
-
-                <div className="col-3 col-sm-auto">
-                  <div className="facility-icon-box mb-1">
-                    <i className="bi bi-shield-lock"></i>
-                  </div>
-                  <div className="small fw-semibold text-dark">Tủ khóa an toàn</div>
-                </div>
-
-                <div className="col-3 col-sm-auto">
-                  <div className="facility-icon-box mb-1">
-                    <i className="bi bi-droplet"></i>
-                  </div>
-                  <div className="small fw-semibold text-dark">Tắm nóng lạnh</div>
-                </div>
-
-                <div className="col-3 col-sm-auto">
-                  <div className="facility-icon-box mb-1">
-                    <i className="bi bi-cup-hot"></i>
-                  </div>
-                  <div className="small fw-semibold text-dark">Café / Quầy nước</div>
-                </div>
-
-                <div className="col-3 col-sm-auto">
-                  <div className="facility-icon-box mb-1">
-                    <i className="bi bi-lightbulb"></i>
-                  </div>
-                  <div className="small fw-semibold text-dark">Đèn Led ban đêm</div>
-                </div>
-
-                <div className="col-3 col-sm-auto">
-                  <div className="facility-icon-box mb-1">
-                    <i className="bi bi-bag-check"></i>
-                  </div>
-                  <div className="small fw-semibold text-dark">Thuê bóng & áo</div>
-                </div>
+              <div className="d-flex flex-wrap gap-2">
+                {displayAmenities.map((item, idx) => (
+                  <span key={idx} className="badge bg-light text-dark border px-3 py-2 fw-semibold">
+                    <i className="bi bi-check-circle-fill text-success me-1"></i>
+                    {item}
+                  </span>
+                ))}
               </div>
             </div>
 
@@ -304,17 +435,13 @@ export default function CourtDetailPage({ court, onBackToHome, onProceedBooking,
                 <div className="d-flex align-items-center gap-2">
                   <div className="d-inline-flex align-items-center gap-1 bg-warning bg-opacity-25 text-dark fw-bold rounded-pill px-2 py-1 small">
                     <i className="bi bi-star-fill text-warning"></i>
-                    <span>4.9</span>
+                    <span>{detail?.rating || 4.9}</span>
                   </div>
                   <span className="fw-bold text-dark">Đánh giá từ người chơi</span>
-                  <span className="text-muted small d-none d-sm-inline">(186 nhận xét đã xác thực tại sân)</span>
+                  <span className="text-muted small d-none d-sm-inline">({detail?.reviewCount || 120} nhận xét)</span>
                 </div>
-                <a href="#reviews" className="small text-brand text-decoration-none fw-semibold" onClick={(e) => { e.preventDefault(); alert('Hiển thị 186 đánh giá từ thành viên.'); }}>
-                  Xem tất cả 186 đánh giá →
-                </a>
               </div>
 
-              {/* Sample Review */}
               <div className="p-3 bg-light rounded-3 border">
                 <div className="d-flex justify-content-between align-items-start mb-2">
                   <div className="d-flex align-items-center gap-2">
@@ -323,7 +450,7 @@ export default function CourtDetailPage({ court, onBackToHome, onProceedBooking,
                     </div>
                     <div>
                       <div className="fw-bold text-dark">Nguyễn Tuấn Kiệt</div>
-                      <div className="text-muted" style={{ fontSize: '0.72rem' }}>Đá sân 7 • 18:30 thứ Tư tuần trước</div>
+                      <div className="text-muted" style={{ fontSize: '0.72rem' }}>Đã trải nghiệm thực tế tại {detail?.name}</div>
                     </div>
                   </div>
                   <div className="text-warning small">
@@ -335,33 +462,32 @@ export default function CourtDetailPage({ court, onBackToHome, onProceedBooking,
                   </div>
                 </div>
                 <p className="text-dark small mb-0 fst-italic" style={{ lineHeight: '1.5' }}>
-                  "Mặt sân cỏ mới rất êm chân, dàn đèn sáng đều không chói mắt khi sút bóng. Dịch vụ trà đá, gửi xe chu đáo dắt xe tận nơi. Sẽ ủng hộ lâu dài!"
+                  "Mặt sân mới rất êm chân, đèn chiếu sáng rõ ràng. Đặt lịch online giữ chỗ đúng khung giờ, tới sân check-in nhanh gọn!"
                 </p>
               </div>
             </div>
-
           </div>
 
           {/* Right Column: Sticky Booking Card */}
           <div className="col-lg-5">
             <div className="booking-sidebar-card sticky-top" style={{ top: '90px' }}>
-              
-              {/* Step 1: Chọn Loại Sân */}
+              {/* Step 1: Chọn Sân Con */}
               <div className="mb-3">
                 <label className="form-label small fw-bold text-muted text-uppercase mb-1">
-                  1. CHỌN LOẠI SÂN
+                  1. CHỌN SÂN THI ĐẤU
                 </label>
-                <select 
+                <select
                   className="form-select fw-semibold text-brand-dark py-2 border-1 shadow-none"
-                  value={selectedCourtType.id}
+                  value={selectedSubCourt?.id ?? ''}
                   onChange={(e) => {
-                    const match = courtTypes.find(c => c.id === parseInt(e.target.value, 10));
-                    if (match) setSelectedCourtType(match);
+                    const val = e.target.value;
+                    const match = subCourts.find(c => String(c.id ?? '') === val);
+                    if (match) setSelectedSubCourt(match);
                   }}
                 >
-                  {courtTypes.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} • {c.priceFormatted} / 60p
+                  {subCourts.map((c, idx) => (
+                    <option key={c.id || idx} value={c.id ?? ''}>
+                      {c.name} • {Number(c.normalPrice).toLocaleString('vi-VN')}đ - {Number(c.peakPrice).toLocaleString('vi-VN')}đ/h
                     </option>
                   ))}
                 </select>
@@ -373,13 +499,15 @@ export default function CourtDetailPage({ court, onBackToHome, onProceedBooking,
                   <label className="form-label small fw-bold text-muted text-uppercase mb-0">
                     2. CHỌN NGÀY THI ĐẤU
                   </label>
-                  <span className="small text-muted fw-semibold">Tháng 08/2024</span>
+                  <span className="small text-muted fw-semibold">
+                    Tháng {selectedDate.monthStr}/{selectedDate.yearStr}
+                  </span>
                 </div>
 
-                <div className="row g-2">
+                <div className="row g-2 mb-2">
                   {dateOptions.map((d, index) => (
-                    <div key={index} className="col-3">
-                      <div 
+                    <div key={d.fullDate} className="col-3">
+                      <div
                         className={`date-select-pill ${selectedDate.fullDate === d.fullDate ? 'active' : ''}`}
                         onClick={() => setSelectedDate(d)}
                       >
@@ -390,50 +518,74 @@ export default function CourtDetailPage({ court, onBackToHome, onProceedBooking,
                     </div>
                   ))}
                 </div>
+
+                <input
+                  type="date"
+                  className="form-control form-control-sm"
+                  min={formatLocalYMD(new Date())}
+                  value={selectedDate.fullDate}
+                  onChange={(e) => {
+                    if (e.target.value) setSelectedDate(getDayMeta(e.target.value, -1));
+                  }}
+                />
               </div>
 
-              {/* Step 3: Chọn Khung Giờ Vàng */}
+              {/* Step 3: Chọn Khung Giờ (Real DB Availability) */}
               <div className="mb-4">
                 <div className="d-flex justify-content-between align-items-center mb-1">
                   <label className="form-label small fw-bold text-muted text-uppercase mb-0">
-                    3. CHỌN KHUNG GIỜ VÀNG
+                    3. CHỌN KHUNG GIỜ TRỐNG
                   </label>
-                  <div className="d-flex align-items-center gap-2 small" style={{ fontSize: '0.72rem' }}>
-                    <span className="d-flex align-items-center gap-1 text-muted">
-                      <span className="rounded-circle bg-secondary" style={{ width: '6px', height: '6px' }}></span>
-                      Đã đặt
-                    </span>
-                    <span className="d-flex align-items-center gap-1 text-success fw-bold">
-                      <span className="rounded-circle bg-success" style={{ width: '6px', height: '6px' }}></span>
-                      Đang chọn
-                    </span>
+                  <button
+                    type="button"
+                    className="btn btn-link btn-sm p-0 text-decoration-none text-brand"
+                    onClick={loadAvailability}
+                    title="Làm mới lịch trống"
+                  >
+                    <i className="bi bi-arrow-clockwise me-1"></i>Làm mới
+                  </button>
+                </div>
+
+                {slotsLoading ? (
+                  <div className="text-center py-4 small text-muted">
+                    <div className="spinner-border spinner-border-sm text-success me-2" role="status"></div>
+                    Đang kiểm tra khung giờ trống...
                   </div>
-                </div>
+                ) : slotsError ? (
+                  <div className="alert alert-danger py-2 small">{slotsError}</div>
+                ) : slots.length === 0 ? (
+                  <div className="alert alert-warning py-2 small">
+                    Cụm sân chưa mở khung giờ nào cho ngày này.
+                  </div>
+                ) : (
+                  <div className="row g-2">
+                    {slots.map((ts) => {
+                      const isDisabled = ts.status !== 'available';
+                      const isSelected = selectedSlot?.slotId === ts.slotId;
 
-                <div className="row g-2">
-                  {timeSlots.map((ts, idx) => {
-                    const isBooked = ts.status === 'booked';
-                    const isSelected = selectedSlot.slot === ts.slot;
-
-                    return (
-                      <div key={idx} className="col-6">
-                        <button
-                          type="button"
-                          disabled={isBooked}
-                          className={`slot-btn w-100 ${isBooked ? 'booked' : ''} ${isSelected ? 'selected' : ''}`}
-                          onClick={() => !isBooked && setSelectedSlot(ts)}
-                        >
-                          <span className={`fw-bold ${isSelected ? 'text-brand-dark' : isBooked ? 'text-muted' : 'text-dark'}`}>
-                            {ts.slot}
-                          </span>
-                          <span style={{ fontSize: '0.72rem' }} className={isBooked ? 'text-danger-emphasis' : isSelected ? 'text-success fw-bold' : 'text-muted'}>
-                            {isBooked ? 'Đã kín chỗ' : isSelected ? `Đang chọn • ${ts.price}` : `Trống • ${ts.price}`}
-                          </span>
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                      return (
+                        <div key={ts.slotId} className="col-6">
+                          <button
+                            type="button"
+                            disabled={isDisabled}
+                            className={`slot-btn w-100 ${isDisabled ? 'booked' : ''} ${isSelected ? 'selected' : ''}`}
+                            onClick={() => !isDisabled && setSelectedSlot(ts)}
+                          >
+                            <span className={`fw-bold ${isSelected ? 'text-brand-dark' : isDisabled ? 'text-muted' : 'text-dark'}`}>
+                              {ts.slot} {ts.isPeak ? '⭐' : ''}
+                            </span>
+                            <span
+                              style={{ fontSize: '0.72rem' }}
+                              className={isDisabled ? 'text-danger-emphasis' : isSelected ? 'text-success fw-bold' : 'text-muted'}
+                            >
+                              {isSelected ? `Đang chọn • ${Math.round(ts.price / 1000)}k` : ts.label}
+                            </span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Price Calculation & Checkout */}
@@ -441,19 +593,20 @@ export default function CourtDetailPage({ court, onBackToHome, onProceedBooking,
                 <div className="d-flex justify-content-between align-items-baseline mb-1">
                   <span className="text-muted small">Tổng cộng (1 giờ):</span>
                   <span className="small text-muted fw-semibold">
-                    {selectedSlot.slot} • {selectedDate.dateNum}/08
+                    {selectedSlot ? `${selectedSlot.slot} • ` : ''}{selectedDate.dateNum}/{selectedDate.monthStr}
                   </span>
                 </div>
                 <div className="fs-3 fw-bold text-brand-dark mb-3">
-                  {selectedCourtType.priceFormatted}
+                  {Number(activePrice).toLocaleString('vi-VN')}đ
                 </div>
 
-                <button 
-                  type="button" 
+                <button
+                  type="button"
+                  disabled={!selectedSlot || slotsLoading}
                   className="btn btn-brand w-100 py-3 fw-bold fs-6 d-flex align-items-center justify-content-center gap-2 shadow-sm rounded-3"
                   onClick={handleBooking}
                 >
-                  <span>Tiến hành Đặt sân ngay</span>
+                  <span>{selectedSlot ? 'Tiến hành Đặt sân ngay' : 'Vui lòng chọn khung giờ trống'}</span>
                   <i className="bi bi-arrow-right"></i>
                 </button>
               </div>
@@ -462,55 +615,17 @@ export default function CourtDetailPage({ court, onBackToHome, onProceedBooking,
               <div className="text-center text-muted small" style={{ fontSize: '0.75rem', lineHeight: '1.4' }}>
                 <div className="mb-1">
                   <i className="bi bi-shield-check text-success me-1"></i>
-                  Xác nhận tức thì qua SMS • Không trùng lịch 100%
+                  Kiểm tra lịch thời gian thực • Chống trùng lịch 100%
                 </div>
                 <div>
                   <i className="bi bi-clock-history text-success me-1"></i>
-                  Hỗ trợ đổi lịch linh hoạt trước giờ đá 4 tiếng
+                  Hỗ trợ hủy lịch nhanh trong mục Lịch đặt của tôi
                 </div>
               </div>
-
             </div>
           </div>
-
         </div>
-
       </div>
-
-      {/* Footer */}
-      <footer className="footer-dark pt-5 pb-4 mt-5">
-        <div className="container">
-          <div className="row align-items-center justify-content-between pb-4 border-bottom border-secondary border-opacity-25 gy-3">
-            <div className="col-md-5">
-              <div className="d-flex align-items-center gap-2 mb-2">
-                <div className="d-flex align-items-center justify-content-center bg-white bg-opacity-10 rounded-circle" style={{ width: '34px', height: '34px' }}>
-                  <i className="bi bi-trophy-fill text-success fs-6"></i>
-                </div>
-                <span className="fw-bold fs-4 text-white">SportsBooking</span>
-              </div>
-              <p className="text-white-50 small mb-0">Nền tảng đặt sân thể thao #1 Việt Nam</p>
-            </div>
-            <div className="col-md-7 d-flex flex-wrap align-items-center justify-content-md-end gap-4">
-              <a href="#guide" onClick={(e) => { e.preventDefault(); onBackToHome(); }} className="small text-white-50 text-decoration-none">Hướng dẫn</a>
-              <a href="#login" onClick={(e) => { e.preventDefault(); onOpenAuth('login'); }} className="small text-white-50 text-decoration-none">Đăng nhập</a>
-              <a href="#register" onClick={(e) => { e.preventDefault(); onOpenAuth('register'); }} className="small text-white-50 text-decoration-none">Đăng ký</a>
-              <div className="d-inline-flex align-items-center gap-2 bg-white bg-opacity-10 text-white rounded-pill px-3 py-1 small fw-semibold">
-                <i className="bi bi-telephone-fill text-success"></i>
-                <span>Hotline: 1900 8888</span>
-              </div>
-            </div>
-          </div>
-          <div className="d-flex flex-column flex-md-row justify-content-between align-items-center pt-4 small text-white-50 gy-2">
-            <p className="mb-2 mb-md-0">© 2024 SportsBooking Vietnam. Tất cả quyền được bảo lưu.</p>
-            <div className="d-flex align-items-center gap-3">
-              <span>Tiếng Việt ▾</span>
-              <span>•</span>
-              <span>Hà Nội & TP.HCM</span>
-            </div>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
-

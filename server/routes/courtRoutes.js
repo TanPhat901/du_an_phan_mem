@@ -11,11 +11,46 @@ const getCourtsFromFile = () => {
   return JSON.parse(data);
 };
 
-// GET /api/courts - Search & filter courts
+const FACILITY_IMAGES = [
+  'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=800&q=80'
+];
+
+const isPeakHour = (startTimeStr) => {
+  const hour = parseInt(String(startTimeStr || '0').split(':')[0], 10);
+  return hour >= 17 && hour < 21;
+};
+
+// GET /api/courts/sport-types - Danh sách bộ môn thể thao đang hoạt động
+router.get('/sport-types', async (req, res) => {
+  if (isDbConnected()) {
+    try {
+      const result = await pool.query(
+        `SELECT sport_type_id, name, description
+         FROM sport_types
+         WHERE status = 'ACTIVE'
+         ORDER BY sport_type_id ASC`
+      );
+      return res.json({ success: true, data: result.rows });
+    } catch (err) {
+      console.warn('⚠️ Lỗi lấy sport_types:', err.message);
+    }
+  }
+  return res.json({
+    success: true,
+    data: [
+      { sport_type_id: 1, name: 'PADEL & PICKLEBALL' },
+      { sport_type_id: 2, name: 'BÓNG ĐÁ & TENNIS' },
+      { sport_type_id: 3, name: 'CẦU LÔNG TRONG NHÀ' }
+    ]
+  });
+});
+
+// GET /api/courts - Tìm kiếm & lọc cụm sân công khai
 router.get('/', async (req, res) => {
   const { keyword, city, category, minPrice, maxPrice, featured } = req.query;
 
-  // 1. Try PostgreSQL with the official schema
   if (isDbConnected()) {
     try {
       let queryStr = `
@@ -29,9 +64,18 @@ router.get('/', async (req, res) => {
           c.price_per_slot AS price_per_hour,
           c.operational_status,
           c.is_visible,
-          c.created_at
+          c.created_at,
+          COALESCE(sc_stats.sub_court_count, 0) AS sub_court_count,
+          COALESCE(sc_stats.min_price, c.price_per_slot) AS effective_min_price
         FROM courts c
         LEFT JOIN sport_types st ON c.sport_type_id = st.sport_type_id
+        LEFT JOIN (
+          SELECT court_id,
+                 COUNT(*) FILTER (WHERE status = 'ACTIVE' AND is_visible = TRUE) AS sub_court_count,
+                 MIN(normal_price) FILTER (WHERE status = 'ACTIVE' AND is_visible = TRUE) AS min_price
+          FROM sub_courts
+          GROUP BY court_id
+        ) sc_stats ON sc_stats.court_id = c.court_id
         WHERE c.is_visible = TRUE AND c.operational_status = 'ACTIVE'
       `;
       const values = [];
@@ -56,13 +100,13 @@ router.get('/', async (req, res) => {
       }
 
       if (minPrice) {
-        queryStr += ` AND c.price_per_slot >= $${valIdx}`;
+        queryStr += ` AND COALESCE(sc_stats.min_price, c.price_per_slot) >= $${valIdx}`;
         values.push(parseInt(minPrice, 10));
         valIdx++;
       }
 
       if (maxPrice) {
-        queryStr += ` AND c.price_per_slot <= $${valIdx}`;
+        queryStr += ` AND COALESCE(sc_stats.min_price, c.price_per_slot) <= $${valIdx}`;
         values.push(parseInt(maxPrice, 10));
         valIdx++;
       }
@@ -70,15 +114,15 @@ router.get('/', async (req, res) => {
       queryStr += ' ORDER BY c.court_id ASC';
 
       const result = await pool.query(queryStr, values);
-      
-      // Fallback courts map for images & ratings
       const fallbackCourts = getCourtsFromFile();
 
       const courts = result.rows.map((row, idx) => {
-        const fallback = fallbackCourts.find(f => f.id === parseInt(row.id, 10)) || fallbackCourts[idx % fallbackCourts.length];
-        
+        const idNum = Number(row.id);
+        const fallback = fallbackCourts.find(f => f.id === idNum) || fallbackCourts[idx % fallbackCourts.length];
+        const minPriceVal = parseFloat(row.effective_min_price || row.price_per_hour);
+
         return {
-          id: row.id,
+          id: idNum,
           name: row.name,
           category: row.category || 'THỂ THAO',
           sportType: row.category ? row.category.toLowerCase() : 'sport',
@@ -87,11 +131,12 @@ router.get('/', async (req, res) => {
           reviewCount: fallback ? fallback.reviewCount : 120,
           address: row.address,
           city: row.city || 'TP. Hồ Chí Minh',
-          pricePerHour: parseFloat(row.price_per_hour),
-          priceFormatted: `${Number(row.price_per_hour).toLocaleString('vi-VN')}đ`,
-          imageUrl: fallback ? fallback.imageUrl : 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&q=80',
-          amenities: row.description ? row.description.split(',').map(s => s.trim()) : (fallback ? fallback.amenities : []),
-          openTime: '06:00 - 23:00',
+          pricePerHour: minPriceVal,
+          priceFormatted: `${Number(minPriceVal).toLocaleString('vi-VN')}đ`,
+          imageUrl: fallback ? fallback.imageUrl : FACILITY_IMAGES[(idNum - 1) % FACILITY_IMAGES.length],
+          amenities: row.description ? row.description.split(',').map(s => s.trim()).filter(Boolean) : (fallback ? fallback.amenities : []),
+          subCourtCount: Number(row.sub_court_count || 0),
+          openTime: '06:00 - 22:00',
           featured: true,
           availableSlots: ["06:00 - 07:00", "07:00 - 08:00", "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00", "19:00 - 20:00", "20:00 - 21:00", "21:00 - 22:00"]
         };
@@ -108,55 +153,184 @@ router.get('/', async (req, res) => {
     }
   }
 
-  // 2. Fallback
+  // Fallback
   try {
     let courts = getCourtsFromFile();
 
-    if (featured === 'true') {
-      courts = courts.filter(c => c.featured);
-    }
-
+    if (featured === 'true') courts = courts.filter(c => c.featured);
     if (keyword) {
       const kw = keyword.toLowerCase().trim();
-      courts = courts.filter(c => 
-        c.name.toLowerCase().includes(kw) || 
+      courts = courts.filter(c =>
+        c.name.toLowerCase().includes(kw) ||
         c.category.toLowerCase().includes(kw) ||
         (c.sportType && c.sportType.toLowerCase().includes(kw)) ||
         c.address.toLowerCase().includes(kw)
       );
     }
-
     if (city) {
       const c = city.toLowerCase().trim();
       courts = courts.filter(court => court.city.toLowerCase().includes(c));
     }
-
     if (category) {
       courts = courts.filter(court => court.category.toLowerCase().includes(category.toLowerCase()));
     }
+    if (minPrice) courts = courts.filter(court => court.pricePerHour >= parseInt(minPrice, 10));
+    if (maxPrice) courts = courts.filter(court => court.pricePerHour <= parseInt(maxPrice, 10));
 
-    if (minPrice) {
-      courts = courts.filter(court => court.pricePerHour >= parseInt(minPrice, 10));
-    }
-
-    if (maxPrice) {
-      courts = courts.filter(court => court.pricePerHour <= parseInt(maxPrice, 10));
-    }
-
-    res.json({
-      success: true,
-      source: 'JSON Fallback',
-      total: courts.length,
-      data: courts
-    });
+    res.json({ success: true, source: 'JSON Fallback', total: courts.length, data: courts });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Lỗi tải dữ liệu sân', error: err.message });
   }
 });
 
-// GET /api/courts/:id - Get court detail
+// GET /api/courts/:id/availability?date=YYYY-MM-DD&subCourtId=...
+router.get('/:id/availability', async (req, res) => {
+  const courtId = parseInt(req.params.id, 10);
+  if (!Number.isSafeInteger(courtId) || courtId <= 0) {
+    return res.status(400).json({ success: false, message: 'Mã cụm sân không hợp lệ.' });
+  }
+
+  const date = typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
+    ? req.query.date
+    : new Date().toISOString().split('T')[0];
+  const subCourtId = req.query.subCourtId ? parseInt(req.query.subCourtId, 10) : null;
+
+  if (!isDbConnected()) {
+    return res.status(503).json({ success: false, message: 'Không thể kết nối cơ sở dữ liệu.' });
+  }
+
+  try {
+    const courtRes = await pool.query(
+      `SELECT court_id, price_per_slot, operational_status, is_visible
+       FROM courts
+       WHERE court_id = $1`,
+      [courtId]
+    );
+    if (courtRes.rowCount === 0 || !courtRes.rows[0].is_visible || courtRes.rows[0].operational_status !== 'ACTIVE') {
+      return res.status(404).json({ success: false, message: 'Cụm sân hiện không khả dụng.' });
+    }
+    const basePrice = Number(courtRes.rows[0].price_per_slot || 200000);
+
+    let normalPrice = basePrice;
+    let peakPrice = basePrice;
+    let subCourtUnavailable = false;
+
+    if (subCourtId && Number.isSafeInteger(subCourtId)) {
+      const scRes = await pool.query(
+        `SELECT normal_price, peak_price, status, is_visible
+         FROM sub_courts
+         WHERE sub_court_id = $1 AND court_id = $2`,
+        [subCourtId, courtId]
+      );
+      if (scRes.rowCount === 0) {
+        return res.status(404).json({ success: false, message: 'Không tìm thấy sân con.' });
+      }
+      normalPrice = Number(scRes.rows[0].normal_price);
+      peakPrice = Number(scRes.rows[0].peak_price);
+      if (scRes.rows[0].status !== 'ACTIVE' || !scRes.rows[0].is_visible) {
+        subCourtUnavailable = true;
+      }
+    }
+
+    const slotsRes = await pool.query(
+      `SELECT
+         slot_id,
+         TO_CHAR(start_time, 'HH24:MI') AS start_label,
+         TO_CHAR(end_time, 'HH24:MI') AS end_label,
+         TO_CHAR(start_time, 'HH24:MI:SS') AS start_full,
+         TO_CHAR(end_time, 'HH24:MI:SS') AS end_full
+       FROM time_slots
+       WHERE court_id = $1 AND is_active = TRUE
+       ORDER BY start_time ASC`,
+      [courtId]
+    );
+
+    const bookedRes = await pool.query(
+      `SELECT bd.slot_id, bd.sub_court_id
+       FROM booking_details bd
+       JOIN bookings b ON b.booking_id = bd.booking_id
+       WHERE bd.court_id = $1
+         AND bd.booking_date = $2::date
+         AND bd.active_flag = 1
+         AND b.status <> 'CANCELLED'
+         AND ($3::bigint IS NULL OR bd.sub_court_id = $3 OR bd.sub_court_id IS NULL)`,
+      [courtId, date, subCourtId]
+    );
+    const bookedSlotIds = new Set(bookedRes.rows.map(r => Number(r.slot_id)));
+
+    const blocksRes = await pool.query(
+      `SELECT
+         TO_CHAR(start_at, 'YYYY-MM-DD HH24:MI:SS') AS start_at_str,
+         TO_CHAR(end_at, 'YYYY-MM-DD HH24:MI:SS') AS end_at_str,
+         reason
+       FROM court_blocks
+       WHERE court_id = $1
+         AND start_at < ($2::date + INTERVAL '1 day')
+         AND end_at > $2::date
+         AND (sub_court_id IS NULL OR $3::bigint IS NULL OR sub_court_id = $3)`,
+      [courtId, date, subCourtId]
+    );
+
+    const slots = slotsRes.rows.map((s) => {
+      const slotId = Number(s.slot_id);
+      const peak = isPeakHour(s.start_full);
+      const price = peak ? peakPrice : normalPrice;
+      const slotLabel = `${s.start_label} - ${s.end_label}`;
+      const slotStartStr = `${date} ${s.start_full}`;
+      const slotEndStr = `${date} ${s.end_full}`;
+
+      const blockMatch = blocksRes.rows.find(
+        bl => bl.start_at_str < slotEndStr && bl.end_at_str > slotStartStr
+      );
+
+      let status = 'available';
+      let label = `Trống • ${Math.round(price / 1000)}k`;
+
+      if (subCourtUnavailable) {
+        status = 'blocked';
+        label = 'Đang bảo trì';
+      } else if (bookedSlotIds.has(slotId)) {
+        status = 'booked';
+        label = 'Đã kín chỗ';
+      } else if (blockMatch) {
+        status = 'blocked';
+        label = blockMatch.reason ? `Khóa: ${blockMatch.reason}` : 'Đã khóa lịch';
+      }
+
+      return {
+        slotId,
+        slot: slotLabel,
+        startTime: s.start_label,
+        endTime: s.end_label,
+        isPeak: peak,
+        price,
+        priceFormatted: `${price.toLocaleString('vi-VN')}đ`,
+        status,
+        label
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        courtId,
+        subCourtId,
+        date,
+        slots
+      }
+    });
+  } catch (err) {
+    console.error('Lỗi kiểm tra lịch trống:', err.message);
+    return res.status(500).json({ success: false, message: 'Không thể kiểm tra khung giờ trống.' });
+  }
+});
+
+// GET /api/courts/:id - Lấy chi tiết cụm sân + danh sách sân con + khung giờ
 router.get('/:id', async (req, res) => {
   const courtId = parseInt(req.params.id, 10);
+  if (!Number.isSafeInteger(courtId) || courtId <= 0) {
+    return res.status(400).json({ success: false, message: 'Mã sân không hợp lệ.' });
+  }
 
   if (isDbConnected()) {
     try {
@@ -168,35 +342,99 @@ router.get('/:id', async (req, res) => {
           c.address,
           c.area AS city,
           c.description,
-          c.price_per_slot AS price_per_hour
+          c.price_per_slot AS price_per_hour,
+          c.operational_status,
+          c.is_visible,
+          u.full_name AS owner_name,
+          u.phone AS owner_phone
         FROM courts c
         LEFT JOIN sport_types st ON c.sport_type_id = st.sport_type_id
+        LEFT JOIN users u ON c.owner_id = u.user_id
         WHERE c.court_id = $1
       `, [courtId]);
 
       if (result.rows.length > 0) {
         const row = result.rows[0];
+        if (!row.is_visible || row.operational_status !== 'ACTIVE') {
+          return res.status(404).json({ success: false, message: 'Cụm sân hiện không khả dụng.' });
+        }
         const fallback = getCourtsFromFile().find(f => f.id === courtId);
+
+        const subCourtsRes = await pool.query(
+          `SELECT
+             sc.sub_court_id,
+             sc.name,
+             sc.sport_type_id,
+             st.name AS sport_name,
+             sc.description,
+             sc.surface_type,
+             sc.amenities,
+             sc.image_url,
+             sc.normal_price,
+             sc.peak_price
+           FROM sub_courts sc
+           LEFT JOIN sport_types st ON st.sport_type_id = sc.sport_type_id
+           WHERE sc.court_id = $1 AND sc.status = 'ACTIVE' AND sc.is_visible = TRUE
+           ORDER BY sc.sub_court_id ASC`,
+          [courtId]
+        );
+
+        const timeSlotsRes = await pool.query(
+          `SELECT
+             slot_id,
+             TO_CHAR(start_time, 'HH24:MI') AS start_label,
+             TO_CHAR(end_time, 'HH24:MI') AS end_label,
+             TO_CHAR(start_time, 'HH24:MI:SS') AS start_full
+           FROM time_slots
+           WHERE court_id = $1 AND is_active = TRUE
+           ORDER BY start_time ASC`,
+          [courtId]
+        );
+
+        const subCourts = subCourtsRes.rows.map(sc => ({
+          id: Number(sc.sub_court_id),
+          name: sc.name,
+          sportTypeId: Number(sc.sport_type_id),
+          sportType: sc.sport_name || row.category,
+          description: sc.description || '',
+          surfaceType: sc.surface_type || '',
+          amenities: sc.amenities || [],
+          imageUrl: sc.image_url || (fallback ? fallback.imageUrl : FACILITY_IMAGES[(courtId - 1) % FACILITY_IMAGES.length]),
+          normalPrice: Number(sc.normal_price),
+          peakPrice: Number(sc.peak_price),
+          priceFormatted: `${Number(sc.normal_price).toLocaleString('vi-VN')}đ`
+        }));
+
+        const timeSlots = timeSlotsRes.rows.map(ts => ({
+          slotId: Number(ts.slot_id),
+          slot: `${ts.start_label} - ${ts.end_label}`,
+          isPeak: isPeakHour(ts.start_full)
+        }));
 
         return res.json({
           success: true,
           source: 'PostgreSQL Database',
           data: {
-            id: row.id,
+            id: Number(row.id),
             name: row.name,
-            category: row.category,
+            category: row.category || 'THỂ THAO',
             rating: fallback ? fallback.rating : 4.9,
             reviewCount: fallback ? fallback.reviewCount : 186,
             address: row.address,
-            city: row.city,
+            city: row.city || 'TP. Hồ Chí Minh',
+            ownerName: row.owner_name || '',
+            ownerPhone: row.owner_phone || '',
             pricePerHour: parseFloat(row.price_per_hour),
             priceFormatted: `${Number(row.price_per_hour).toLocaleString('vi-VN')}đ`,
-            imageUrl: fallback ? fallback.imageUrl : 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&q=80',
-            amenities: row.description ? row.description.split(',').map(s => s.trim()) : (fallback ? fallback.amenities : []),
-            openTime: '06:00 - 23:00'
+            imageUrl: fallback ? fallback.imageUrl : FACILITY_IMAGES[(courtId - 1) % FACILITY_IMAGES.length],
+            amenities: row.description ? row.description.split(',').map(s => s.trim()).filter(Boolean) : (fallback ? fallback.amenities : []),
+            openTime: '06:00 - 22:00',
+            subCourts,
+            timeSlots
           }
         });
       }
+      return res.status(404).json({ success: false, message: 'Không tìm thấy sân thể thao' });
     } catch (err) {
       console.warn('⚠️ Lỗi truy vấn PostgreSQL court detail:', err.message);
     }
@@ -212,87 +450,6 @@ router.get('/:id', async (req, res) => {
     res.json({ success: true, source: 'JSON Fallback', data: court });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Lỗi máy chủ', error: err.message });
-  }
-});
-
-// POST /api/courts - Owner creates a new court
-router.post('/', async (req, res) => {
-  try {
-    const { name, category, sportType, address, city, pricePerHour, amenities, imageUrl, openTime } = req.body;
-    
-    if (!name || !pricePerHour) {
-      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp tên sân và giá thuê!' });
-    }
-
-    const courts = getCourtsFromFile();
-    const newCourt = {
-      id: Date.now(),
-      name,
-      category: category || 'THỂ THAO TỔNG HỢP',
-      sportType: sportType || 'sport',
-      rating: 5.0,
-      ratingFormatted: '5.0',
-      reviewCount: 1,
-      address: address || 'TP. Hồ Chí Minh',
-      city: city || 'TP. Hồ Chí Minh',
-      pricePerHour: parseInt(pricePerHour, 10),
-      priceFormatted: `${parseInt(pricePerHour, 10).toLocaleString('vi-VN')}đ`,
-      imageUrl: imageUrl || 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
-      amenities: Array.isArray(amenities) ? amenities : ['Đèn Led', 'Bãi đỗ xe', 'Phòng thay đồ'],
-      openTime: openTime || '06:00 - 23:00',
-      featured: false,
-      availableSlots: ["06:00 - 07:00", "07:00 - 08:00", "17:00 - 18:00", "18:00 - 19:00", "19:00 - 20:00", "20:00 - 21:00"]
-    };
-
-    courts.unshift(newCourt);
-    fs.writeFileSync(courtsFilePath, JSON.stringify(courts, null, 2), 'utf-8');
-
-    res.status(201).json({ success: true, message: 'Thêm sân thể thao mới thành công!', data: newCourt });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Lỗi khi tạo sân mới', error: err.message });
-  }
-});
-
-// PUT /api/courts/:id - Owner updates court information
-router.put('/:id', async (req, res) => {
-  try {
-    const courtId = parseInt(req.params.id, 10);
-    const courts = getCourtsFromFile();
-    const index = courts.findIndex(c => c.id === courtId);
-
-    if (index === -1) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy sân thể thao cần sửa' });
-    }
-
-    courts[index] = {
-      ...courts[index],
-      ...req.body,
-      id: courtId
-    };
-
-    fs.writeFileSync(courtsFilePath, JSON.stringify(courts, null, 2), 'utf-8');
-    res.json({ success: true, message: 'Cập nhật thông tin sân thành công!', data: courts[index] });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Lỗi khi cập nhật sân', error: err.message });
-  }
-});
-
-// DELETE /api/courts/:id - Owner deletes a court
-router.delete('/:id', async (req, res) => {
-  try {
-    const courtId = parseInt(req.params.id, 10);
-    let courts = getCourtsFromFile();
-    const courtToDelete = courts.find(c => c.id === courtId);
-
-    if (!courtToDelete) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy sân thể thao cần xóa' });
-    }
-
-    courts = courts.filter(c => c.id !== courtId);
-    fs.writeFileSync(courtsFilePath, JSON.stringify(courts, null, 2), 'utf-8');
-    res.json({ success: true, message: 'Đã xóa sân thể thao thành công!' });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Lỗi khi xóa sân', error: err.message });
   }
 });
 
