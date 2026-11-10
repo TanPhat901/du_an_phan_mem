@@ -84,7 +84,8 @@ npm run dev
 2. **GitHub Issues & Milestones**:
    - Mỗi nhiệm vụ WBS / User Story tương ứng với 01 Issue (mẫu trong `.github/ISSUE_TEMPLATE/`), có đầy đủ **Acceptance Criteria**, **Assignee** và **Milestone** (Sprint).
 3. **GitHub Projects (Board & Table)**:
-   - Quản lý luồng Agile/Kanban theo 5 cột: `Backlog` → `Ready` → `In Progress` → `In Review` → `Done`, kết hợp cột `Sprint` (Iteration) và `Story Points` để theo dõi tiến độ / Burndown theo Sprint.
+   - Bảng quản lý công khai: [GitHub Projects #1](https://github.com/users/TanPhat901/projects/1).
+   - Quản lý luồng Agile/Kanban theo 5 cột: `Backlog` → `Ready` → `In Progress` → `In Review` → `Done`, kết hợp cột `Sprint` (Iteration) và `Story Points` để theo dõi tiến độ / [Biểu đồ Burndown Sprint 1 & 2](./docs/sprint-burndown.md).
 4. **GitHub Pull Requests & Peer Review**:
    - Mọi PR vào `main` sử dụng `.github/PULL_REQUEST_TEMPLATE.md`, có ghi chú **tự kiểm thử (Self-test)**, vượt qua kiểm tra CI (`.github/workflows/ci-check.yml`) và được ít nhất **01 thành viên duyệt (Peer Review Approval)**.
 
@@ -97,6 +98,9 @@ npm run dev
 │   ├── ISSUE_TEMPLATE/        # Template User Story (WBS) & Bug Report có Acceptance Criteria
 │   ├── workflows/             # ci-check.yml (tự động build Frontend & kiểm tra cú pháp Backend)
 │   └── PULL_REQUEST_TEMPLATE.md
+├── docs/
+│   ├── burndown-sprint-1-2.png # Biểu đồ Burndown Chart Sprint 1 & Sprint 2
+│   └── sprint-burndown.md     # Bảng số liệu chi tiết Sprint 1 & Sprint 2
 ├── database/
 │   └── migrations/            # Các script SQL migration cập nhật schema
 ├── server/                    # Backend Node.js & Express
