@@ -1,0 +1,60 @@
+name: User Story / Nhiệm vụ WBS
+description: Tạo Issue cho một User Story hoặc đầu việc WBS theo chuẩn Project Charter (Mục 7)
+title: "[feat]: "
+labels: ["user-story"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Mỗi nhiệm vụ WBS / User Story cần gắn đầy đủ **Assignee** (người phụ trách), **Milestone** (Sprint), và đưa vào **GitHub Project**.
+  - type: input
+    id: wbs
+    attributes:
+      label: Mã WBS / Phân hệ
+      description: Ghi rõ mã WBS hoặc phân hệ liên quan trong hệ thống SportsBooking
+      placeholder: "Ví dụ: WBS 2.3 - Đặt sân real-time (Customer / Owner / Admin)"
+    validations:
+      required: true
+  - type: textarea
+    id: user_story
+    attributes:
+      label: Mô tả User Story / Nội dung công việc
+      description: Mô tả ngắn gọn mục tiêu hoặc luồng nghiệp vụ cần hoàn thành
+      value: |
+        Là <vai trò người dùng>,
+        Tôi muốn <chức năng / hành động>,
+        Để <giá trị / kết quả mong đợi>.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Tiêu chí chấp nhận (Acceptance Criteria)
+      description: Liệt kê các điều kiện cụ thể phải đạt được để Issue chuyển sang Done
+      value: |
+        - [ ] Giao diện / API hoạt động đúng thiết kế và dữ liệu PostgreSQL
+        - [ ] Xử lý đầy đủ các trường hợp lỗi và kiểm tra phân quyền (nếu có)
+        - [ ] Code được đẩy qua Pull Request, chạy qua CI build và có ít nhất 01 Peer Review Approve
+    validations:
+      required: true
+  - type: dropdown
+    id: story_points
+    attributes:
+      label: Story Points (Ước lượng độ phức tạp)
+      options:
+        - "1"
+        - "2"
+        - "3"
+        - "5"
+        - "8"
+        - "13"
+    validations:
+      required: false
+  - type: textarea
+    id: notes
+    attributes:
+      label: Ghi chú kỹ thuật / Tài liệu liên quan
+      description: Liệt kê endpoint API, bảng DB hoặc component Frontend liên quan (nếu có)
+    validations:
+      required: false
+

@@ -1,0 +1,41 @@
+name: Báo lỗi (Bug Report)
+description: Ghi nhận lỗi phát hiện khi tự kiểm thử hoặc Peer Review
+title: "[fix]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Mô tả lỗi
+      description: Mô tả rõ lỗi xảy ra ở màn hình / API nào
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Các bước tái hiện
+      value: |
+        1. Đăng nhập với vai trò ...
+        2. Truy cập vào trang / gọi API ...
+        3. Thực hiện thao tác ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Kết quả mong đợi vs. Thực tế
+      value: |
+        - **Mong đợi:** ...
+        - **Thực tế:** ...
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Tiêu chí chấp nhận khi sửa lỗi (Acceptance Criteria)
+      value: |
+        - [ ] Tái hiện không còn xảy ra lỗi trên kịch bản đã báo
+        - [ ] Đã tự kiểm thử lại luồng liên quan trước khi mở PR
+    validations:
+      required: true
+
