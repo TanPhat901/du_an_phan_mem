@@ -3,87 +3,26 @@ import Navbar from './components/Navbar';
 import HeroSection from './components/HeroSection';
 import SearchFilterBar from './components/SearchFilterBar';
 import CourtList from './components/CourtList';
+import HowItWorksSection from './components/HowItWorksSection';
 import PartnerBanner from './components/PartnerBanner';
 import Footer from './components/Footer';
 import BookingModal from './components/BookingModal';
-import PartnerModal from './components/PartnerModal';
-import MyBookingsModal from './components/MyBookingsModal';
+import MyBookingsPage from './components/MyBookingsPage';
 import AuthPage from './components/AuthPage';
 import CourtDetailPage from './components/CourtDetailPage';
 import OwnerDashboard from './components/OwnerDashboard';
+import AdminDashboard from './components/AdminDashboard';
 import ProfilePage from './components/ProfilePage';
-
-const formatTodayLocal = () => {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
-
-// Initial fallback courts identical to backend JSON & screenshot
-const INITIAL_COURTS = [
-  {
-    id: 1,
-    name: "The Yard Padel Club Thảo Điền",
-    category: "PADEL & PICKLEBALL",
-    sportType: "pickleball",
-    rating: 4.9,
-    ratingFormatted: "4.9",
-    reviewCount: 128,
-    address: "Nguyễn Văn Hưởng, Phường Thảo Điền, TP. Thủ Đức",
-    city: "TP. Hồ Chí Minh",
-    pricePerHour: 280000,
-    priceFormatted: "280.000đ",
-    imageUrl: "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&q=80",
-    amenities: ["Bãi đỗ ô tô", "Phòng tắm nóng lạnh", "Café / Quầy nước"],
-    featured: true,
-    availableSlots: ["06:00 - 07:00", "07:00 - 08:00", "17:00 - 18:00", "18:00 - 19:00", "19:00 - 20:00", "20:00 - 21:00"]
-  },
-  {
-    id: 2,
-    name: "Trung Tâm Celadon Sport Club",
-    category: "BÓNG ĐÁ & TENNIS",
-    sportType: "football",
-    rating: 4.8,
-    ratingFormatted: "4.8",
-    reviewCount: 94,
-    address: "Đường N1, Sơn Kỳ, Tân Phú, TP. Hồ Chí Minh",
-    city: "TP. Hồ Chí Minh",
-    pricePerHour: 190000,
-    priceFormatted: "190.000đ",
-    imageUrl: "https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80",
-    amenities: ["Đèn Led ban đêm", "Khán đài có mái", "Bảo vệ 24/7"],
-    featured: true,
-    availableSlots: ["07:00 - 08:30", "16:00 - 17:30", "18:00 - 19:30", "19:30 - 21:00", "21:00 - 22:30"]
-  },
-  {
-    id: 3,
-    name: "Sky Garden Arena Phú Mỹ Hưng",
-    category: "CẦU LÔNG TRONG NHÀ",
-    sportType: "badminton",
-    rating: 4.95,
-    ratingFormatted: "4.95",
-    reviewCount: 210,
-    address: "Phạm Văn Nghị, Tân Phong, Quận 7, TP. HCM",
-    city: "TP. Hồ Chí Minh",
-    pricePerHour: 140000,
-    priceFormatted: "140.000đ",
-    imageUrl: "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=800&q=80",
-    amenities: ["Máy lạnh công suất lớn", "Thảm Yonex chuẩn thi đấu"],
-    featured: true,
-    availableSlots: ["06:00 - 07:00", "08:00 - 09:00", "16:00 - 17:00", "17:00 - 18:00", "19:00 - 20:00"]
-  }
-];
+import { formatLocalYMD, getStoredToken } from './utils/vietqr';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('home'); // 'home' | 'login' | 'register' | 'register-owner' | 'profile' | 'owner-dashboard' | 'court-detail'
+  const [currentView, setCurrentView] = useState('home'); // 'home' | 'login' | 'register' | 'register-owner' | 'profile' | 'owner-dashboard' | 'admin-dashboard' | 'court-detail' | 'my-bookings'
   const [currentUser, setCurrentUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    const token = localStorage.getItem('sportsbooking_token') || sessionStorage.getItem('sportsbooking_token');
+    const token = getStoredToken();
     if (!token) {
       localStorage.removeItem('sportsbooking_user');
       setAuthReady(true);
@@ -91,37 +30,53 @@ export default function App() {
     }
     fetch('http://localhost:5000/api/auth/me', {
       headers: { Authorization: `Bearer ${token}` }
-    }).then(async (res) => {
-      const data = await res.json();
-      if (!res.ok || !data.success || !data.data) throw new Error('Invalid session');
-      if (!cancelled) setCurrentUser(data.data);
-    }).catch(() => {
-      // Không coi thông tin lưu trên trình duyệt là phiên đăng nhập hợp lệ.
-      if (!cancelled) {
-        setCurrentUser(null);
-        localStorage.removeItem('sportsbooking_user');
-      }
-    }).finally(() => { if (!cancelled) setAuthReady(true); });
-    return () => { cancelled = true; };
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok || !data.success || !data.data) throw new Error('Invalid session');
+        if (!cancelled) setCurrentUser(data.data);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCurrentUser(null);
+          localStorage.removeItem('sportsbooking_user');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAuthReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const [courts, setCourts] = useState(INITIAL_COURTS);
-  const [loading, setLoading] = useState(false);
+  const [courts, setCourts] = useState([]);
+  const [sportTypes, setSportTypes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [courtsError, setCourtsError] = useState('');
   const [activeTab, setActiveTab] = useState('home');
   const [activeSearchTab, setActiveSearchTab] = useState('search');
 
   // Search & Filter state
   const [keyword, setKeyword] = useState('');
-  const [selectedCity, setSelectedCity] = useState('TP. Hồ Chí Minh');
-  const [playDate, setPlayDate] = useState(formatTodayLocal);
+  const [selectedCity, setSelectedCity] = useState('');
+  const [playDate, setPlayDate] = useState(() => formatLocalYMD());
   const [selectedCategory, setSelectedCategory] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
+  const [sortBy, setSortBy] = useState('featured');
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [filterRefreshNonce, setFilterRefreshNonce] = useState(0);
 
-  // Modals state
+  // Favorites state
+  const [favoriteCourtIds, setFavoriteCourtIds] = useState([]);
+
+  // Modals & Detail state
   const [selectedCourtDetail, setSelectedCourtDetail] = useState(null);
+  const [postAuthReturnCourt, setPostAuthReturnCourt] = useState(null);
+  const [postAuthReturnView, setPostAuthReturnView] = useState(null);
+  const [detailScrollToReviews, setDetailScrollToReviews] = useState(false);
   const [selectedCourtForBooking, setSelectedCourtForBooking] = useState(null);
-  const [showPartnerModal, setShowPartnerModal] = useState(false);
-  const [showMyBookings, setShowMyBookings] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
   // Real bookings state (tải từ PostgreSQL)
@@ -129,8 +84,34 @@ export default function App() {
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [availabilityRefreshKey, setAvailabilityRefreshKey] = useState(0);
 
+  const showNotification = useCallback((msg) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage('');
+    }, 4500);
+  }, []);
+
+  const loadFavorites = useCallback(async () => {
+    const token = getStoredToken();
+    if (!token) {
+      setFavoriteCourtIds([]);
+      return;
+    }
+    try {
+      const res = await fetch('http://localhost:5000/api/courts/favorites/my', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success && Array.isArray(json.data)) {
+        setFavoriteCourtIds(json.data.map((c) => Number(c.id)));
+      }
+    } catch {
+      // Ignore temporary network issue
+    }
+  }, []);
+
   const loadMyBookings = useCallback(async () => {
-    const token = localStorage.getItem('sportsbooking_token') || sessionStorage.getItem('sportsbooking_token');
+    const token = getStoredToken();
     if (!token) {
       setBookings([]);
       return;
@@ -145,7 +126,7 @@ export default function App() {
         setBookings(json.data);
       }
     } catch {
-      // Bỏ qua lỗi mạng tạm thời
+      // Ignore temporary network issue
     } finally {
       setBookingsLoading(false);
     }
@@ -169,96 +150,225 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (currentUser) {
-      loadMyBookings();
-    } else {
-      setBookings([]);
-    }
-  }, [currentUser, loadMyBookings]);
+    let cancelled = false;
+    fetch('http://localhost:5000/api/courts/sport-types')
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled && json?.success && Array.isArray(json.data)) {
+          setSportTypes(json.data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
-    if (showMyBookings && currentUser) {
+    if (currentUser) {
+      loadMyBookings();
+      loadFavorites();
+    } else {
+      setBookings([]);
+      setFavoriteCourtIds([]);
+      setFavoritesOnly(false);
+    }
+  }, [currentUser, loadMyBookings, loadFavorites]);
+
+  useEffect(() => {
+    if (currentView === 'my-bookings' && currentUser) {
       loadMyBookings();
     }
-  }, [showMyBookings, currentUser, loadMyBookings]);
+  }, [currentView, currentUser, loadMyBookings]);
 
   // Fetch courts from backend API
-  const fetchCourts = async () => {
+  const fetchCourts = useCallback(async () => {
     setLoading(true);
+    setCourtsError('');
     try {
       const params = new URLSearchParams();
       if (keyword) params.append('keyword', keyword);
       if (selectedCity) params.append('city', selectedCity);
       if (selectedCategory) params.append('category', selectedCategory);
       if (maxPrice) params.append('maxPrice', maxPrice);
+      if (playDate) params.append('date', playDate);
+      if (sortBy) params.append('sort', sortBy);
+      if (onlyAvailable) params.append('onlyAvailable', 'true');
+      if (favoritesOnly) params.append('favoritesOnly', 'true');
 
-      const res = await fetch(`http://localhost:5000/api/courts?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.data) {
-          setCourts(data.data);
-          setLoading(false);
-          return;
-        }
+      const token = getStoredToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const res = await fetch(`http://localhost:5000/api/courts?${params.toString()}`, { headers });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success || !Array.isArray(data.data)) {
+        throw new Error(data.message || 'Không thể tải danh sách sân thể thao.');
       }
-      throw new Error('Fallback to local filter');
-    } catch {
-      let filtered = [...INITIAL_COURTS];
-      if (keyword) {
-        const kw = keyword.toLowerCase();
-        filtered = filtered.filter(c => c.name.toLowerCase().includes(kw) || c.category.toLowerCase().includes(kw));
-      }
-      if (selectedCity) {
-        filtered = filtered.filter(c => c.city.toLowerCase().includes(selectedCity.toLowerCase()));
-      }
-      if (selectedCategory) {
-        filtered = filtered.filter(c => c.category.toLowerCase().includes(selectedCategory.toLowerCase()));
-      }
-      if (maxPrice) {
-        filtered = filtered.filter(c => c.pricePerHour <= parseInt(maxPrice, 10));
-      }
-      setCourts(filtered);
+      setCourts(data.data);
+    } catch (err) {
+      setCourts([]);
+      setCourtsError(err.message || 'Không thể kết nối máy chủ để tải danh sách sân.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [keyword, selectedCity, selectedCategory, maxPrice, playDate, sortBy, onlyAvailable, favoritesOnly]);
 
   useEffect(() => {
     if (currentView === 'home') {
       fetchCourts();
     }
-  }, [selectedCategory, selectedCity, currentView]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedCategory,
+    selectedCity,
+    playDate,
+    sortBy,
+    onlyAvailable,
+    favoritesOnly,
+    currentView,
+    availabilityRefreshKey,
+    filterRefreshNonce,
+    currentUser?.id
+  ]);
 
-  const handleTabChange = (tab) => {
-    setActiveSearchTab(tab);
-    if (tab === 'my-bookings') {
-      setShowMyBookings(true);
+  const handleResetFilters = () => {
+    setKeyword('');
+    setSelectedCity('');
+    setSelectedCategory('');
+    setMaxPrice('');
+    setSortBy('featured');
+    setOnlyAvailable(false);
+    setFavoritesOnly(false);
+    setPlayDate(formatLocalYMD());
+    setFilterRefreshNonce((n) => n + 1);
+  };
+
+  const handleToggleFavorite = async (courtObj) => {
+    const cId = Number(courtObj?.id || courtObj);
+    if (!Number.isSafeInteger(cId) || cId <= 0) return;
+
+    const token = getStoredToken();
+    if (!currentUser || !token) {
+      showNotification('Vui lòng đăng nhập tài khoản để lưu sân yêu thích.');
+      openAuthView('login', currentView === 'court-detail' ? selectedCourtDetail : null);
+      return;
+    }
+
+    const currentlySaved = favoriteCourtIds.includes(cId);
+    const method = currentlySaved ? 'DELETE' : 'POST';
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/courts/${cId}/favorite`, {
+        method,
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Không thể cập nhật sân yêu thích.');
+      }
+
+      const nextSaved = Boolean(json.data?.isFavorite);
+      setFavoriteCourtIds((prev) =>
+        nextSaved ? Array.from(new Set([...prev, cId])) : prev.filter((id) => id !== cId)
+      );
+      setCourts((prev) =>
+        prev.map((c) =>
+          Number(c.id) === cId
+            ? {
+                ...c,
+                isFavorite: nextSaved,
+                favoritesCount: Number(json.data?.favoritesCount ?? c.favoritesCount ?? 0)
+              }
+            : c
+        )
+      );
+      setSelectedCourtDetail((prev) =>
+        prev && Number(prev.id) === cId
+          ? {
+              ...prev,
+              isFavorite: nextSaved,
+              favoritesCount: Number(json.data?.favoritesCount ?? prev.favoritesCount ?? 0)
+            }
+          : prev
+      );
+      showNotification(nextSaved ? 'Đã lưu vào danh sách sân yêu thích.' : 'Đã bỏ khỏi danh sách sân yêu thích.');
+    } catch (err) {
+      showNotification(err.message);
     }
   };
 
-  const showNotification = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage('');
-    }, 4500);
+  const openCourtById = (courtOrId, { focusReviews = false } = {}) => {
+    const targetId = Number(courtOrId?.id || courtOrId);
+    const found =
+      (typeof courtOrId === 'object' && courtOrId !== null ? courtOrId : null) ||
+      courts.find((c) => Number(c.id) === targetId) ||
+      { id: targetId };
+
+    setSelectedCourtDetail(found);
+    setDetailScrollToReviews(focusReviews);
+    setCurrentView('court-detail');
+    if (!focusReviews) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleReviewUpdated = (courtId, avgRating, reviewCount) => {
+    setCourts((prev) =>
+      prev.map((c) =>
+        Number(c.id) === Number(courtId)
+          ? {
+              ...c,
+              rating: avgRating,
+              ratingFormatted: reviewCount > 0 ? Number(avgRating).toFixed(1) : 'Mới',
+              reviewCount
+            }
+          : c
+      )
+    );
+    loadMyBookings();
+  };
+
+  const openMyBookingsPage = () => {
+    setSelectedCourtForBooking(null);
+    setDetailScrollToReviews(false);
+    setActiveSearchTab('search');
+    setActiveTab('bookings');
+    setCurrentView('my-bookings');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleTabChange = (tab) => {
+    if (tab === 'my-bookings') {
+      openMyBookingsPage();
+      return;
+    }
+    setActiveSearchTab(tab);
   };
 
   const handleBookingSuccess = (newBooking) => {
-    setBookings(prev => [newBooking, ...prev.filter(b => b.id !== newBooking.id)]);
-    setAvailabilityRefreshKey(k => k + 1);
-    showNotification(`🎉 Đặt sân thành công! Mã đặt chỗ của bạn là: ${newBooking.id}`);
+    setBookings((prev) => [newBooking, ...prev.filter((b) => b.id !== newBooking.id)]);
+    setAvailabilityRefreshKey((k) => k + 1);
+    showNotification(
+      `Đã gửi yêu cầu đặt sân (${newBooking.id}). Vui lòng chờ chủ sân xác nhận.`
+    );
   };
 
   const handleCancelSuccess = (bookingId, reason) => {
-    setBookings(prev =>
-      prev.map(b =>
+    setBookings((prev) =>
+      prev.map((b) =>
         b.id === bookingId
           ? { ...b, status: 'CANCELLED', statusLabel: 'Đã hủy', cancelReason: reason }
           : b
       )
     );
-    setAvailabilityRefreshKey(k => k + 1);
+    setAvailabilityRefreshKey((k) => k + 1);
     showNotification(`Đã hủy đơn đặt sân ${bookingId}.`);
+  };
+
+  const openAuthView = (mode, returnCourt = null, returnView = null) => {
+    setPostAuthReturnCourt(returnCourt);
+    setPostAuthReturnView(returnView);
+    setCurrentView(mode);
   };
 
   const handleAuthSuccess = (userData, remember = true) => {
@@ -272,19 +382,43 @@ export default function App() {
     const { token, ...user } = userData;
     setCurrentUser(user);
     localStorage.setItem('sportsbooking_user', JSON.stringify(user));
+    if (userData.role === 'ADMIN') {
+      setPostAuthReturnCourt(null);
+      setPostAuthReturnView(null);
+      showNotification(`Chào mừng Quản trị viên ${userData.fullName}.`);
+      setCurrentView('admin-dashboard');
+      return;
+    }
     if (userData.role === 'OWNER') {
-      showNotification(`🎉 Chào mừng Đối tác Chủ sân ${userData.fullName}! Chuyển đến Giao diện Quản lý Chủ Sân.`);
+      setPostAuthReturnCourt(null);
+      setPostAuthReturnView(null);
+      showNotification(`Chào mừng đối tác chủ sân ${userData.fullName}.`);
       setCurrentView('owner-dashboard');
       return;
-    } else {
-      showNotification(`Xin chào ${userData.fullName || 'bạn'}! Đăng nhập thành công.`);
     }
+    showNotification(`Xin chào ${userData.fullName || 'bạn'}! Đăng nhập thành công.`);
+    if (postAuthReturnCourt) {
+      setSelectedCourtDetail(postAuthReturnCourt);
+      setPostAuthReturnCourt(null);
+      setPostAuthReturnView(null);
+      setCurrentView('court-detail');
+      return;
+    }
+    if (postAuthReturnView === 'my-bookings') {
+      setPostAuthReturnView(null);
+      setActiveTab('bookings');
+      setCurrentView('my-bookings');
+      return;
+    }
+    setPostAuthReturnView(null);
     setCurrentView('home');
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
     setBookings([]);
+    setFavoriteCourtIds([]);
+    setFavoritesOnly(false);
     localStorage.removeItem('sportsbooking_user');
     localStorage.removeItem('sportsbooking_token');
     sessionStorage.removeItem('sportsbooking_token');
@@ -292,11 +426,40 @@ export default function App() {
   };
 
   const handleProfileUpdated = (user) => {
-    setCurrentUser(prev => ({ ...prev, ...user }));
+    setCurrentUser((prev) => ({ ...prev, ...user }));
     localStorage.setItem('sportsbooking_user', JSON.stringify({ ...currentUser, ...user }));
   };
 
-  if (!authReady) return <div className="container py-5">Đang xác minh phiên đăng nhập...</div>;
+  const navigateToHome = (targetTab = 'home') => {
+    setCurrentView('home');
+    setDetailScrollToReviews(false);
+    setActiveTab(targetTab === 'search' ? 'search' : 'home');
+    if (targetTab === 'search') {
+      setTimeout(() => {
+        document.getElementById('search-section')?.scrollIntoView({ behavior: 'smooth' });
+      }, 60);
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  if (!authReady) return <div className="container py-5 small text-muted">Đang tải...</div>;
+
+  const toastBanner = toastMessage ? (
+    <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1100, maxWidth: '400px' }}>
+      <div className="bg-white border shadow-sm rounded-3 py-2 px-3 d-flex align-items-center gap-2 small text-dark">
+        <i className="bi bi-check-circle-fill text-success flex-shrink-0"></i>
+        <div className="flex-grow-1">{toastMessage}</div>
+        <button
+          type="button"
+          className="btn-close ms-2"
+          style={{ fontSize: '0.68rem' }}
+          aria-label="Đóng"
+          onClick={() => setToastMessage('')}
+        ></button>
+      </div>
+    </div>
+  ) : null;
 
   // Personal profile page
   if (currentView === 'profile' && !currentUser) {
@@ -305,39 +468,82 @@ export default function App() {
   if (currentView === 'profile') {
     return (
       <div className="min-vh-100 d-flex flex-column bg-white">
+        {toastBanner}
         <Navbar
-          onOpenAuth={(mode) => setCurrentView(mode)}
-          onOpenMyBookings={() => setShowMyBookings(true)}
+          onOpenAuth={(mode) => openAuthView(mode)}
+          onOpenMyBookings={openMyBookingsPage}
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+          onOpenAdminDashboard={() => setCurrentView('admin-dashboard')}
           onOpenProfile={() => setCurrentView('profile')}
-          onGoHome={() => setCurrentView('home')}
+          onGoHome={navigateToHome}
           activeTab={activeTab}
           setActiveTab={setActiveTab}
+          activeView="profile"
           currentUser={currentUser}
-          onLogout={() => { handleLogout(); setCurrentView('home'); }}
+          onLogout={() => {
+            handleLogout();
+            navigateToHome('home');
+          }}
         />
         <ProfilePage
           currentUser={currentUser}
           onProfileUpdated={handleProfileUpdated}
-          onBackToHome={() => setCurrentView('home')}
-          onOpenMyBookings={() => setShowMyBookings(true)}
-          onLogout={() => { handleLogout(); setCurrentView('home'); }}
+          onBackToHome={() => navigateToHome('home')}
+          onOpenMyBookings={openMyBookingsPage}
+          onOpenCourt={(fav) => openCourtById(fav)}
+          onToggleFavorite={handleToggleFavorite}
+          onLogout={() => {
+            handleLogout();
+            navigateToHome('home');
+          }}
         />
         <Footer
-          onOpenAuth={(mode) => setCurrentView(mode)}
+          onOpenAuth={(mode) => openAuthView(mode)}
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
         />
-        {showMyBookings && (
-          <MyBookingsModal
-            bookings={bookings}
-            loading={bookingsLoading}
-            currentUser={currentUser}
-            onRefreshBookings={loadMyBookings}
-            onLookupByPhone={lookupBookingsByPhone}
-            onCancelSuccess={handleCancelSuccess}
-            onClose={() => setShowMyBookings(false)}
-          />
-        )}
+      </div>
+    );
+  }
+
+  // Dedicated My Bookings Page
+  if (currentView === 'my-bookings') {
+    return (
+      <div className="min-vh-100 d-flex flex-column bg-white">
+        {toastBanner}
+        <Navbar
+          onOpenAuth={(mode) => openAuthView(mode, null, 'my-bookings')}
+          onOpenMyBookings={openMyBookingsPage}
+          onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+          onOpenAdminDashboard={() => setCurrentView('admin-dashboard')}
+          onOpenProfile={() => setCurrentView('profile')}
+          onGoHome={navigateToHome}
+          activeTab="bookings"
+          setActiveTab={setActiveTab}
+          activeView="my-bookings"
+          currentUser={currentUser}
+          onLogout={() => {
+            handleLogout();
+            navigateToHome('home');
+          }}
+        />
+        <MyBookingsPage
+          bookings={bookings}
+          loading={bookingsLoading}
+          currentUser={currentUser}
+          onRequireAuth={(mode) => openAuthView(mode, null, 'my-bookings')}
+          onBackToHome={() => navigateToHome('home')}
+          onOpenSearchCourts={() => navigateToHome('search')}
+          onOpenProfile={() => setCurrentView('profile')}
+          onRefreshBookings={loadMyBookings}
+          onLookupByPhone={lookupBookingsByPhone}
+          onCancelSuccess={handleCancelSuccess}
+          onRebookCourt={(cId) => openCourtById(cId)}
+          onReviewCourt={(cId) => openCourtById(cId, { focusReviews: true })}
+        />
+        <Footer
+          onOpenAuth={(mode) => openAuthView(mode, null, 'my-bookings')}
+          onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+        />
       </div>
     );
   }
@@ -348,7 +554,11 @@ export default function App() {
       <AuthPage
         initialMode={currentView === 'login' ? 'login' : 'register'}
         initialRole={currentView === 'register-owner' ? 'OWNER' : 'USER'}
-        onBackToHome={() => setCurrentView('home')}
+        onBackToHome={() => {
+          setPostAuthReturnCourt(null);
+          setPostAuthReturnView(null);
+          navigateToHome('home');
+        }}
         onAuthSuccess={handleAuthSuccess}
       />
     );
@@ -358,44 +568,83 @@ export default function App() {
   if (currentView === 'owner-dashboard') {
     return (
       <OwnerDashboard
-        onOpenAuth={(mode) => setCurrentView(mode)}
+        onOpenAuth={(mode) => openAuthView(mode)}
+        onOpenProfile={() => setCurrentView('profile')}
+        onOpenMyBookings={openMyBookingsPage}
         currentUser={currentUser}
-        onBackToHome={() => {
-          setCurrentView('home');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+        onBackToHome={() => navigateToHome('home')}
+        onLogout={() => {
+          handleLogout();
+          navigateToHome('home');
         }}
-        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // If in Admin Dashboard mode
+  if (currentView === 'admin-dashboard') {
+    return (
+      <AdminDashboard
+        onOpenAuth={(mode) => openAuthView(mode)}
+        onOpenProfile={() => setCurrentView('profile')}
+        onOpenMyBookings={openMyBookingsPage}
+        onOpenCourt={(cId) => openCourtById(cId)}
+        currentUser={currentUser}
+        onBackToHome={() => navigateToHome('home')}
+        onLogout={() => {
+          handleLogout();
+          navigateToHome('home');
+        }}
       />
     );
   }
 
   // If in Court Detail Page mode
   if (currentView === 'court-detail') {
+    const isDetailFav = favoriteCourtIds.includes(Number(selectedCourtDetail?.id));
     return (
       <div className="min-vh-100 d-flex flex-column bg-white">
-        {toastMessage && (
-          <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1100 }}>
-            <div className="alert alert-success shadow-lg border-0 d-flex align-items-center gap-2 mb-0 py-3 px-4 rounded-3 text-dark">
-              <i className="bi bi-check-circle-fill text-success fs-5"></i>
-              <div>
-                <strong>Thông báo:</strong> {toastMessage}
-              </div>
-              <button type="button" className="btn-close ms-auto" onClick={() => setToastMessage('')}></button>
-            </div>
-          </div>
-        )}
+        {toastBanner}
+
+        <Navbar
+          onOpenAuth={(mode) => openAuthView(mode, selectedCourtDetail)}
+          onOpenMyBookings={openMyBookingsPage}
+          onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+          onOpenAdminDashboard={() => setCurrentView('admin-dashboard')}
+          onOpenProfile={() => setCurrentView('profile')}
+          onGoHome={navigateToHome}
+          activeTab="search"
+          setActiveTab={setActiveTab}
+          activeView="court-detail"
+          currentUser={currentUser}
+          onLogout={handleLogout}
+        />
 
         <CourtDetailPage
           court={selectedCourtDetail}
           initialDate={playDate}
           availabilityRefreshKey={availabilityRefreshKey}
-          onBackToHome={() => {
-            setCurrentView('home');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
+          currentUser={currentUser}
+          isFavorite={isDetailFav}
+          scrollToReviews={detailScrollToReviews}
+          onToggleFavorite={handleToggleFavorite}
+          onRequireAuth={(mode) => openAuthView(mode, selectedCourtDetail)}
+          onReviewUpdated={handleReviewUpdated}
+          onNotify={showNotification}
+          onBackToHome={() => navigateToHome('home')}
           onProceedBooking={(bookingPlan) => {
+            if (!currentUser || !getStoredToken()) {
+              showNotification('Vui lòng đăng nhập tài khoản để đặt sân.');
+              openAuthView('login', selectedCourtDetail);
+              return;
+            }
+            const resolvedCourtId = bookingPlan.courtId || selectedCourtDetail?.id;
+            if (!resolvedCourtId) {
+              showNotification('Không xác định được cụm sân để đặt.');
+              return;
+            }
             setSelectedCourtForBooking({
-              id: bookingPlan.courtId || selectedCourtDetail?.id || 1,
+              id: resolvedCourtId,
               name: bookingPlan.courtName,
               category: bookingPlan.category || selectedCourtDetail?.category || 'THỂ THAO',
               subCourtId: bookingPlan.subCourtId || null,
@@ -405,17 +654,15 @@ export default function App() {
               timeSlot: bookingPlan.timeSlot,
               pricePerHour: bookingPlan.price,
               priceFormatted: `${Number(bookingPlan.price).toLocaleString('vi-VN')}đ`,
-              imageUrl: bookingPlan.imageUrl || selectedCourtDetail?.imageUrl || 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
+              ownerBank: bookingPlan.ownerBank || selectedCourtDetail?.ownerBank || null,
+              imageUrl: bookingPlan.imageUrl || selectedCourtDetail?.imageUrl || null,
               availableSlots: [bookingPlan.timeSlot]
             });
           }}
-          currentUser={currentUser}
-          onOpenAuth={(mode) => setCurrentView(mode)}
-          onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
         />
 
         <Footer
-          onOpenAuth={(mode) => setCurrentView(mode)}
+          onOpenAuth={(mode) => openAuthView(mode)}
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
         />
 
@@ -423,9 +670,14 @@ export default function App() {
           <BookingModal
             court={selectedCourtForBooking}
             currentUser={currentUser}
+            onRequireAuth={(mode) => {
+              setSelectedCourtForBooking(null);
+              openAuthView(mode, selectedCourtDetail);
+            }}
             onClose={() => setSelectedCourtForBooking(null)}
             onBookingSuccess={handleBookingSuccess}
-            onSlotConflict={() => setAvailabilityRefreshKey(k => k + 1)}
+            onSlotConflict={() => setAvailabilityRefreshKey((k) => k + 1)}
+            onViewMyBookings={openMyBookingsPage}
           />
         )}
       </div>
@@ -435,41 +687,30 @@ export default function App() {
   return (
     <div className="min-vh-100 d-flex flex-column bg-white">
       {/* Toast Alert */}
-      {toastMessage && (
-        <div
-          className="position-fixed top-0 end-0 p-3"
-          style={{ zIndex: 1100 }}
-        >
-          <div className="alert alert-success shadow-lg border-0 d-flex align-items-center gap-2 mb-0 py-3 px-4 rounded-3 text-dark">
-            <i className="bi bi-check-circle-fill text-success fs-5"></i>
-            <div>
-              <strong>Thông báo:</strong> {toastMessage}
-            </div>
-            <button
-              type="button"
-              className="btn-close ms-auto"
-              onClick={() => setToastMessage('')}
-            ></button>
-          </div>
-        </div>
-      )}
+      {toastBanner}
 
       {/* Header / Navbar */}
       <Navbar
-        onOpenAuth={(mode) => setCurrentView(mode)}
-        onOpenMyBookings={() => setShowMyBookings(true)}
+        onOpenAuth={(mode) => openAuthView(mode)}
+        onOpenMyBookings={openMyBookingsPage}
         onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
+        onOpenAdminDashboard={() => setCurrentView('admin-dashboard')}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        activeView="home"
         currentUser={currentUser}
         onLogout={handleLogout}
         onOpenProfile={() => setCurrentView('profile')}
-        onGoHome={() => setCurrentView('home')}
+        onGoHome={navigateToHome}
       />
 
       <main className="flex-grow-1">
         {/* Hero Section */}
-        <HeroSection />
+        <HeroSection
+          featuredCourt={courts[0] || null}
+          totalCourts={courts.length}
+          onOpenFeatured={(court) => openCourtById(court)}
+        />
 
         {/* Floating Search & Filter Bar */}
         <SearchFilterBar
@@ -484,32 +725,51 @@ export default function App() {
           setPlayDate={setPlayDate}
           selectedCategory={selectedCategory}
           setSelectedCategory={setSelectedCategory}
+          sportTypes={sportTypes}
           maxPrice={maxPrice}
           setMaxPrice={setMaxPrice}
+          sortBy={sortBy}
+          setSortBy={setSortBy}
+          onlyAvailable={onlyAvailable}
+          setOnlyAvailable={setOnlyAvailable}
+          favoritesOnly={favoritesOnly}
+          setFavoritesOnly={setFavoritesOnly}
+          currentUser={currentUser}
+          favoritesCount={favoriteCourtIds.length}
+          onResetFilters={handleResetFilters}
         />
 
         {/* Featured Courts Listing */}
         <CourtList
           courts={courts}
           loading={loading}
-          onBookNow={(court) => {
-            setSelectedCourtDetail(court);
-            setCurrentView('court-detail');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
+          error={courtsError}
+          onRetry={fetchCourts}
+          currentUser={currentUser}
+          favoriteCourtIds={favoriteCourtIds}
+          onToggleFavorite={handleToggleFavorite}
+          playDate={playDate}
+          favoritesOnly={favoritesOnly}
+          sportTypes={sportTypes}
+          selectedCategory={selectedCategory}
+          setSelectedCategory={setSelectedCategory}
+          onResetFilters={handleResetFilters}
+          onBookNow={(court) => openCourtById(court)}
         />
+
+        {/* Editorial How It Works Band */}
+        <HowItWorksSection />
 
         {/* Partner Section Banner */}
         <PartnerBanner
-          onOpenPartnerModal={() => setShowPartnerModal(true)}
-          onOpenAuth={(mode) => setCurrentView(mode)}
+          onOpenAuth={(mode) => openAuthView(mode)}
           onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
         />
       </main>
 
       {/* Footer */}
       <Footer
-        onOpenAuth={(mode) => setCurrentView(mode)}
+        onOpenAuth={(mode) => openAuthView(mode)}
         onOpenOwnerDashboard={() => setCurrentView('owner-dashboard')}
       />
 
@@ -518,31 +778,14 @@ export default function App() {
         <BookingModal
           court={selectedCourtForBooking}
           currentUser={currentUser}
+          onRequireAuth={(mode) => {
+            setSelectedCourtForBooking(null);
+            openAuthView(mode);
+          }}
           onClose={() => setSelectedCourtForBooking(null)}
           onBookingSuccess={handleBookingSuccess}
-          onSlotConflict={() => setAvailabilityRefreshKey(k => k + 1)}
-        />
-      )}
-
-      {showPartnerModal && (
-        <PartnerModal
-          onClose={() => setShowPartnerModal(false)}
-          onSuccess={(msg) => showNotification(msg)}
-        />
-      )}
-
-      {showMyBookings && (
-        <MyBookingsModal
-          bookings={bookings}
-          loading={bookingsLoading}
-          currentUser={currentUser}
-          onRefreshBookings={loadMyBookings}
-          onLookupByPhone={lookupBookingsByPhone}
-          onCancelSuccess={handleCancelSuccess}
-          onClose={() => {
-            setShowMyBookings(false);
-            setActiveSearchTab('search');
-          }}
+          onSlotConflict={() => setAvailabilityRefreshKey((k) => k + 1)}
+          onViewMyBookings={openMyBookingsPage}
         />
       )}
     </div>

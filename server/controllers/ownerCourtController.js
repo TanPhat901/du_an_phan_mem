@@ -7,6 +7,46 @@ const isPeakHour = (startTimeStr) => {
   return hour >= 17 && hour < 21;
 };
 
+const resolvePeakFlag = (isPeakValue, startTimeStr) => {
+  if (typeof isPeakValue === 'boolean') return isPeakValue;
+  return isPeakHour(startTimeStr);
+};
+
+const parseTimeToMinutes = (rawTime) => {
+  if (typeof rawTime !== 'string') return null;
+  const match = rawTime.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const mins = Number(match[2]);
+  if (!Number.isInteger(hours) || !Number.isInteger(mins) || hours < 0 || hours > 23 || mins < 0 || mins > 59) {
+    return null;
+  }
+  const hhmm = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  return {
+    minutes: hours * 60 + mins,
+    hhmm,
+    pgTime: `${hhmm}:00`
+  };
+};
+
+const minutesToTimeObj = (totalMins) => {
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  const hhmm = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  return {
+    minutes: totalMins,
+    hhmm,
+    pgTime: `${hhmm}:00`
+  };
+};
+
+const getSlotDurationMinutes = (startTimeStr, endTimeStr) => {
+  const st = parseTimeToMinutes(startTimeStr);
+  const et = parseTimeToMinutes(endTimeStr);
+  if (!st || !et || et.minutes <= st.minutes) return 60;
+  return et.minutes - st.minutes;
+};
+
 const parseBookingNumericId = (rawId) => {
   const cleaned = String(rawId || '').replace(/^BK-/i, '').trim();
   const id = Number(cleaned);
@@ -376,6 +416,16 @@ const getMyFacilities = async (req, res) => {
          c.address,
          c.area,
          c.description,
+         c.image_url,
+         (
+           SELECT NULLIF(TRIM(sc_img.image_url), '')
+           FROM sub_courts sc_img
+           WHERE sc_img.court_id = c.court_id
+             AND sc_img.is_visible = TRUE
+             AND NULLIF(TRIM(sc_img.image_url), '') IS NOT NULL
+           ORDER BY sc_img.sub_court_id ASC
+           LIMIT 1
+         ) AS sub_cover_image,
          c.price_per_slot,
          c.operational_status,
          c.is_visible,
@@ -387,11 +437,28 @@ const getMyFacilities = async (req, res) => {
          op.tax_code,
          op.bank_name,
          op.bank_account_no,
-         op.bank_account_name
+         op.bank_account_name,
+         COALESCE(ts_stats.active_slot_count, 0) AS active_slot_count,
+         ts_stats.open_time_range
        FROM courts c
        JOIN users u ON u.user_id = c.owner_id
        LEFT JOIN owner_profiles op ON op.owner_id = u.user_id
        LEFT JOIN sport_types st ON st.sport_type_id = c.sport_type_id
+       LEFT JOIN (
+         SELECT
+           court_id,
+           COUNT(*) FILTER (WHERE is_active = TRUE)::int AS active_slot_count,
+           CASE
+             WHEN MIN(start_time) FILTER (WHERE is_active = TRUE) IS NOT NULL
+              AND MAX(end_time) FILTER (WHERE is_active = TRUE) IS NOT NULL
+             THEN TO_CHAR(MIN(start_time) FILTER (WHERE is_active = TRUE), 'HH24:MI')
+                  || ' - ' ||
+                  TO_CHAR(MAX(end_time) FILTER (WHERE is_active = TRUE), 'HH24:MI')
+             ELSE NULL
+           END AS open_time_range
+         FROM time_slots
+         GROUP BY court_id
+       ) ts_stats ON ts_stats.court_id = c.court_id
        WHERE c.owner_id = $1
        ORDER BY c.court_id ASC`,
       [userId]
@@ -417,17 +484,42 @@ const createFacility = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Thông tin tài khoản không hợp lệ.' });
     }
 
-    const { name, sport_type_id, address, area, description, price_per_slot } = req.body || {};
-    const sportTypeId = Number(sport_type_id || 1);
-    const price = Number(price_per_slot || 200000);
+    const {
+      name,
+      sport_type_id,
+      address,
+      area,
+      description,
+      image_url,
+      price_per_slot,
+      open_time,
+      close_time,
+      slot_duration
+    } = req.body || {};
+    const sportTypeId = Number(sport_type_id);
+    const price = price_per_slot !== undefined && price_per_slot !== null && price_per_slot !== ''
+      ? Number(price_per_slot)
+      : 0;
+    const openObj = parseTimeToMinutes(typeof open_time === 'string' && open_time ? open_time : '06:00');
+    const closeObj = parseTimeToMinutes(typeof close_time === 'string' && close_time ? close_time : '22:00');
+    const durationMins = slot_duration !== undefined && slot_duration !== '' ? Number(slot_duration) : 60;
 
     if (
       typeof name !== 'string' || !name.trim() || name.trim().length > 150 ||
       typeof address !== 'string' || !address.trim() || address.trim().length > 255 ||
       !Number.isSafeInteger(sportTypeId) || sportTypeId <= 0 ||
-      !Number.isFinite(price) || price < 0
+      !Number.isFinite(price) || price < 0 ||
+      (image_url != null && typeof image_url !== 'string')
     ) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ Tên cụm sân, Địa chỉ và Giá mặc định hợp lệ.' });
+    }
+
+    if (
+      !openObj || !closeObj ||
+      !Number.isInteger(durationMins) || durationMins < 15 || durationMins > 240 ||
+      closeObj.minutes - openObj.minutes < durationMins
+    ) {
+      return res.status(400).json({ success: false, message: 'Giờ mở cửa, đóng cửa hoặc thời lượng ca không hợp lệ.' });
     }
 
     const ownerCheck = await pool.query(
@@ -445,36 +537,30 @@ const createFacility = async (req, res) => {
 
     await client.query('BEGIN');
     const courtRes = await client.query(
-      `INSERT INTO courts (sport_type_id, owner_id, name, address, area, description, price_per_slot, operational_status, is_visible)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE', TRUE)
+      `INSERT INTO courts (sport_type_id, owner_id, name, address, area, description, image_url, price_per_slot, operational_status, is_visible)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', TRUE)
        RETURNING *`,
       [
         sportTypeId,
         userId,
         name.trim(),
         address.trim(),
-        typeof area === 'string' && area.trim() ? area.trim() : 'TP. Hồ Chí Minh',
-        typeof description === 'string' && description.trim() ? description.trim() : 'Bãi đỗ xe, Đèn Led ban đêm, Phòng thay đồ',
+        typeof area === 'string' && area.trim() ? area.trim() : null,
+        typeof description === 'string' && description.trim() ? description.trim() : null,
+        typeof image_url === 'string' && image_url.trim() ? image_url.trim() : null,
         price
       ]
     );
     const newCourt = courtRes.rows[0];
 
-    const defaultSlots = [
-      ['06:00:00', '07:00:00'],
-      ['07:00:00', '08:00:00'],
-      ['16:00:00', '17:00:00'],
-      ['17:00:00', '18:00:00'],
-      ['18:00:00', '19:00:00'],
-      ['19:00:00', '20:00:00'],
-      ['20:00:00', '21:00:00'],
-      ['21:00:00', '22:00:00']
-    ];
-    for (const [st, et] of defaultSlots) {
+    for (let cursor = openObj.minutes; cursor + durationMins <= closeObj.minutes; cursor += durationMins) {
+      const stObj = minutesToTimeObj(cursor);
+      const etObj = minutesToTimeObj(cursor + durationMins);
+      const isPeak = cursor >= 17 * 60 && cursor < 21 * 60;
       await client.query(
-        `INSERT INTO time_slots (court_id, start_time, end_time, is_active)
-         VALUES ($1, $2, $3, TRUE) ON CONFLICT DO NOTHING`,
-        [newCourt.court_id, st, et]
+        `INSERT INTO time_slots (court_id, start_time, end_time, is_peak, is_active)
+         VALUES ($1, $2::time, $3::time, $4, TRUE) ON CONFLICT DO NOTHING`,
+        [newCourt.court_id, stObj.pgTime, etObj.pgTime, isPeak]
       );
     }
 
@@ -512,6 +598,7 @@ const updateFacilitySettings = async (req, res) => {
       address,
       area,
       description,
+      image_url,
       price_per_slot,
       operational_status,
       owner_name,
@@ -552,6 +639,7 @@ const updateFacilitySettings = async (req, res) => {
       address !== undefined ||
       area !== undefined ||
       description !== undefined ||
+      image_url !== undefined ||
       price_per_slot !== undefined ||
       operational_status !== undefined
     ) {
@@ -561,8 +649,9 @@ const updateFacilitySettings = async (req, res) => {
       if (typeof name === 'string' && name.trim()) { updates.push(`name = $${idx++}`); vals.push(name.trim()); }
       if (sport_type_id !== undefined) { updates.push(`sport_type_id = $${idx++}`); vals.push(Number(sport_type_id)); }
       if (typeof address === 'string' && address.trim()) { updates.push(`address = $${idx++}`); vals.push(address.trim()); }
-      if (typeof area === 'string') { updates.push(`area = $${idx++}`); vals.push(area.trim()); }
-      if (typeof description === 'string') { updates.push(`description = $${idx++}`); vals.push(description.trim()); }
+      if (typeof area === 'string') { updates.push(`area = $${idx++}`); vals.push(area.trim() || null); }
+      if (typeof description === 'string') { updates.push(`description = $${idx++}`); vals.push(description.trim() || null); }
+      if (image_url !== undefined) { updates.push(`image_url = $${idx++}`); vals.push(typeof image_url === 'string' && image_url.trim() ? image_url.trim() : null); }
       if (price_per_slot !== undefined && Number.isFinite(Number(price_per_slot)) && Number(price_per_slot) >= 0) {
         updates.push(`price_per_slot = $${idx++}`); vals.push(Number(price_per_slot));
       }
@@ -717,7 +806,7 @@ const getOwnerBookings = async (req, res) => {
       values.push(req.query.date);
     }
 
-    if (req.query.status && ['CONFIRMED', 'COMPLETED', 'CANCELLED'].includes(req.query.status)) {
+    if (req.query.status && ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].includes(req.query.status)) {
       conditions.push(`b.status = $${idx++}`);
       values.push(req.query.status);
     }
@@ -751,7 +840,11 @@ const getOwnerBookings = async (req, res) => {
        LEFT JOIN time_slots ts ON ts.slot_id = bd.slot_id
        LEFT JOIN sub_courts sc ON sc.sub_court_id = COALESCE(bd.sub_court_id, b.sub_court_id)
        WHERE ${conditions.join(' AND ')}
-       ORDER BY b.booking_date DESC, ts.start_time ASC NULLS LAST, b.created_at DESC`,
+       ORDER BY
+         CASE WHEN b.status = 'PENDING' THEN 0 WHEN b.status = 'CONFIRMED' THEN 1 ELSE 2 END,
+         b.booking_date DESC,
+         ts.start_time ASC NULLS LAST,
+         b.created_at DESC`,
       values
     );
 
@@ -816,7 +909,8 @@ const getOwnerSchedule = async (req, res) => {
            TO_CHAR(start_time, 'HH24:MI') AS start_label,
            TO_CHAR(end_time, 'HH24:MI') AS end_label,
            TO_CHAR(start_time, 'HH24:MI:SS') AS start_full,
-           TO_CHAR(end_time, 'HH24:MI:SS') AS end_full
+           TO_CHAR(end_time, 'HH24:MI:SS') AS end_full,
+           is_peak
          FROM time_slots
          WHERE court_id = $1 AND is_active = TRUE
          ORDER BY start_time ASC`,
@@ -878,7 +972,8 @@ const getOwnerSchedule = async (req, res) => {
           endTime: s.end_label,
           startFull: s.start_full,
           endFull: s.end_full,
-          isPeak: isPeakHour(s.start_full)
+          isPeak: resolvePeakFlag(s.is_peak, s.start_full),
+          durationMinutes: getSlotDurationMinutes(s.start_full, s.end_full)
         })),
         bookings: bookingsRes.rows.map((b) => ({
           id: `BK-${b.booking_id}`,
@@ -970,8 +1065,8 @@ const createWalkInBooking = async (req, res) => {
     }
 
     let resolvedSubCourtId = null;
-    let resolvedSubCourtName = 'Sân tiêu chuẩn';
-    let normalPrice = Number(ownerCheck.rows[0].price_per_slot || 200000);
+    let resolvedSubCourtName = null;
+    let normalPrice = Number(ownerCheck.rows[0].price_per_slot || 0);
     let peakPrice = normalPrice;
 
     if (parsedSubCourtId) {
@@ -1002,7 +1097,8 @@ const createWalkInBooking = async (req, res) => {
                 TO_CHAR(start_time, 'HH24:MI') AS start_label,
                 TO_CHAR(end_time, 'HH24:MI') AS end_label,
                 TO_CHAR(start_time, 'HH24:MI:SS') AS start_full,
-                TO_CHAR(end_time, 'HH24:MI:SS') AS end_full
+                TO_CHAR(end_time, 'HH24:MI:SS') AS end_full,
+                is_peak
          FROM time_slots
          WHERE slot_id = $1 AND court_id = $2 AND is_active = TRUE`,
         [parsedSlotId, parsedCourtId]
@@ -1013,7 +1109,8 @@ const createWalkInBooking = async (req, res) => {
                 TO_CHAR(start_time, 'HH24:MI') AS start_label,
                 TO_CHAR(end_time, 'HH24:MI') AS end_label,
                 TO_CHAR(start_time, 'HH24:MI:SS') AS start_full,
-                TO_CHAR(end_time, 'HH24:MI:SS') AS end_full
+                TO_CHAR(end_time, 'HH24:MI:SS') AS end_full,
+                is_peak
          FROM time_slots
          WHERE court_id = $1 AND is_active = TRUE
            AND (TO_CHAR(start_time, 'HH24:MI') || ' - ' || TO_CHAR(end_time, 'HH24:MI')) = $2
@@ -1061,7 +1158,7 @@ const createWalkInBooking = async (req, res) => {
     const priceNum = Number(totalPrice);
     const finalPrice = Number.isFinite(priceNum) && priceNum >= 0
       ? priceNum
-      : (isPeakHour(slotRow.start_full) ? peakPrice : normalPrice);
+      : (resolvePeakFlag(slotRow.is_peak, slotRow.start_full) ? peakPrice : normalPrice);
 
     // Tìm hoặc tạo tài khoản khách theo SĐT
     const guestEmail = `${cleanPhone.replace(/[^a-zA-Z0-9]/g, '')}@guest.sportsbooking.vn`;
@@ -1178,14 +1275,10 @@ const updateOwnerBookingStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Trạng thái cập nhật không hợp lệ.' });
     }
 
-    const reason = typeof req.body?.reason === 'string' && req.body.reason.trim()
-      ? req.body.reason.trim().slice(0, 500)
-      : (mappedStatus === 'CANCELLED' ? 'Chủ sân hủy đơn' : 'Chủ sân cập nhật trạng thái check-in');
-
     await client.query('BEGIN');
 
     const checkRes = await client.query(
-      `SELECT b.booking_id, b.status
+      `SELECT b.booking_id, b.status, b.payment_method
        FROM bookings b
        JOIN courts c ON c.court_id = b.court_id
        JOIN users u ON u.user_id = c.owner_id
@@ -1199,10 +1292,36 @@ const updateOwnerBookingStatus = async (req, res) => {
     }
 
     const currentStatus = checkRes.rows[0].status;
+    const paymentMethodText = String(checkRes.rows[0].payment_method || '').toLowerCase();
+
     if (currentStatus === 'CANCELLED' && mappedStatus !== 'CANCELLED') {
       await client.query('ROLLBACK');
       return res.status(400).json({ success: false, message: 'Đơn đã bị hủy không thể khôi phục.' });
     }
+    if (currentStatus === 'COMPLETED' && mappedStatus !== 'COMPLETED') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, message: 'Đơn đã hoàn tất Check-in không thể đổi sang trạng thái khác.' });
+    }
+    if (currentStatus === 'PENDING' && mappedStatus === 'COMPLETED') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        message: 'Đơn đang chờ xác nhận. Vui lòng xác nhận đơn trước khi Check-in cho khách.'
+      });
+    }
+
+    const defaultReason =
+      mappedStatus === 'CANCELLED'
+        ? currentStatus === 'PENDING'
+          ? 'Chủ sân từ chối / không xác nhận đơn'
+          : 'Chủ sân hủy đơn'
+        : mappedStatus === 'CONFIRMED'
+          ? 'Chủ sân đã xác nhận đơn đặt sân'
+          : 'Chủ sân xác nhận khách đã Check-in vào sân';
+
+    const reason = typeof req.body?.reason === 'string' && req.body.reason.trim()
+      ? req.body.reason.trim().slice(0, 500)
+      : defaultReason;
 
     if (mappedStatus === 'CANCELLED') {
       await client.query(
@@ -1216,6 +1335,16 @@ const updateOwnerBookingStatus = async (req, res) => {
         [bookingId]
       );
     } else {
+      let nextPaymentStatus = null;
+      if (mappedStatus === 'COMPLETED') {
+        nextPaymentStatus = 'PAID';
+      } else if (
+        mappedStatus === 'CONFIRMED' &&
+        (paymentMethodText.includes('vietqr') || paymentMethodText.includes('vnpay') || paymentMethodText.includes('online'))
+      ) {
+        nextPaymentStatus = 'PAID_ONLINE';
+      }
+
       await client.query(
         `UPDATE bookings
          SET status = $1,
@@ -1223,24 +1352,28 @@ const updateOwnerBookingStatus = async (req, res) => {
              cancelled_at = NULL,
              updated_at = NOW()
          WHERE booking_id = $2`,
-        [mappedStatus, bookingId, mappedStatus === 'COMPLETED' ? 'PAID' : null]
+        [mappedStatus, bookingId, nextPaymentStatus]
       );
     }
 
-    await client.query(
-      `INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by, reason)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [bookingId, currentStatus, mappedStatus, ownerUserId, reason]
-    );
+    if (currentStatus !== mappedStatus) {
+      await client.query(
+        `INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by, reason)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [bookingId, currentStatus, mappedStatus, ownerUserId, reason]
+      );
+    }
 
     await client.query('COMMIT');
     return res.status(200).json({
       success: true,
       message: mappedStatus === 'COMPLETED'
         ? `Đã xác nhận Check-in cho đơn BK-${bookingId}!`
-        : mappedStatus === 'CANCELLED'
-          ? `Đã hủy đơn BK-${bookingId} và mở lại khung giờ trống.`
-          : `Đã cập nhật đơn BK-${bookingId}.`,
+        : mappedStatus === 'CONFIRMED'
+          ? `Đã xác nhận đơn đặt sân BK-${bookingId}!`
+          : currentStatus === 'PENDING'
+            ? `Đã từ chối đơn BK-${bookingId} và mở lại khung giờ trống.`
+            : `Đã hủy đơn BK-${bookingId} và mở lại khung giờ trống.`,
       data: { id: `BK-${bookingId}`, bookingId, status: mappedStatus }
     });
   } catch (error) {
@@ -1482,20 +1615,22 @@ const getOwnerAnalytics = async (req, res) => {
       pool.query(
         `SELECT
            COALESCE(SUM(total_amount) FILTER (
-             WHERE status <> 'CANCELLED' AND DATE_TRUNC('month', booking_date) = DATE_TRUNC('month', $2::date)
+             WHERE status IN ('CONFIRMED', 'COMPLETED') AND DATE_TRUNC('month', booking_date) = DATE_TRUNC('month', $2::date)
            ), 0)::numeric AS monthly_revenue,
            COUNT(*) FILTER (
-             WHERE status <> 'CANCELLED' AND DATE_TRUNC('month', booking_date) = DATE_TRUNC('month', $2::date)
+             WHERE status IN ('CONFIRMED', 'COMPLETED') AND DATE_TRUNC('month', booking_date) = DATE_TRUNC('month', $2::date)
            )::int AS monthly_bookings,
            COALESCE(SUM(total_amount) FILTER (
-             WHERE status <> 'CANCELLED'
+             WHERE status IN ('CONFIRMED', 'COMPLETED')
                AND DATE_TRUNC('month', booking_date) = DATE_TRUNC('month', $2::date)
                AND (LOWER(COALESCE(payment_method, '')) LIKE '%vietqr%' OR LOWER(COALESCE(payment_method, '')) LIKE '%vnpay%' OR LOWER(COALESCE(payment_method, '')) LIKE '%online%')
            ), 0)::numeric AS monthly_online_revenue,
-           COUNT(*) FILTER (WHERE status <> 'CANCELLED')::int AS total_valid_bookings,
+           COUNT(*) FILTER (WHERE status IN ('CONFIRMED', 'COMPLETED'))::int AS total_valid_bookings,
            COUNT(*) FILTER (WHERE status = 'COMPLETED')::int AS checked_in_count,
-           COUNT(*) FILTER (WHERE booking_date = $2::date AND status <> 'CANCELLED')::int AS today_bookings,
-           COALESCE(SUM(total_amount) FILTER (WHERE booking_date = $2::date AND status <> 'CANCELLED'), 0)::numeric AS today_revenue
+           COUNT(*) FILTER (WHERE status = 'PENDING')::int AS pending_bookings_count,
+           COUNT(*) FILTER (WHERE booking_date = $2::date AND status IN ('CONFIRMED', 'COMPLETED'))::int AS today_bookings,
+           COUNT(*) FILTER (WHERE booking_date = $2::date AND status = 'PENDING')::int AS today_pending_count,
+           COALESCE(SUM(total_amount) FILTER (WHERE booking_date = $2::date AND status IN ('CONFIRMED', 'COMPLETED')), 0)::numeric AS today_revenue
          FROM bookings
          WHERE court_id = $1`,
         [courtId, targetDate]
@@ -1513,8 +1648,8 @@ const getOwnerAnalytics = async (req, res) => {
         `SELECT
            TO_CHAR(d::date, 'YYYY-MM-DD') AS day_date,
            EXTRACT(DOW FROM d::date)::int AS dow,
-           COALESCE(SUM(b.total_amount) FILTER (WHERE b.status <> 'CANCELLED'), 0)::numeric AS revenue,
-           COUNT(b.booking_id) FILTER (WHERE b.status <> 'CANCELLED')::int AS bookings_count
+           COALESCE(SUM(b.total_amount) FILTER (WHERE b.status IN ('CONFIRMED', 'COMPLETED')), 0)::numeric AS revenue,
+           COUNT(b.booking_id) FILTER (WHERE b.status IN ('CONFIRMED', 'COMPLETED'))::int AS bookings_count
          FROM GENERATE_SERIES($2::date - INTERVAL '6 days', $2::date, '1 day') AS d
          LEFT JOIN bookings b ON b.court_id = $1 AND b.booking_date = d::date
          GROUP BY d
@@ -1524,8 +1659,8 @@ const getOwnerAnalytics = async (req, res) => {
       pool.query(
         `SELECT
            COALESCE(st.name, c_st.name, 'Khác') AS sport_name,
-           COALESCE(SUM(b.total_amount) FILTER (WHERE b.status <> 'CANCELLED'), 0)::numeric AS revenue,
-           COUNT(b.booking_id) FILTER (WHERE b.status <> 'CANCELLED')::int AS bookings_count
+           COALESCE(SUM(b.total_amount) FILTER (WHERE b.status IN ('CONFIRMED', 'COMPLETED')), 0)::numeric AS revenue,
+           COUNT(b.booking_id) FILTER (WHERE b.status IN ('CONFIRMED', 'COMPLETED'))::int AS bookings_count
          FROM bookings b
          JOIN courts c ON c.court_id = b.court_id
          LEFT JOIN sport_types c_st ON c_st.sport_type_id = c.sport_type_id
@@ -1578,6 +1713,8 @@ const getOwnerAnalytics = async (req, res) => {
         platformFeeEstimate: Math.round(monthlyOnlineRevenue * 0.05),
         totalBookings: Number(s.total_valid_bookings || 0),
         checkedInCount: Number(s.checked_in_count || 0),
+        pendingBookingsCount: Number(s.pending_bookings_count || 0),
+        todayPendingCount: Number(s.today_pending_count || 0),
         todayBookingsCount: Number(s.today_bookings || 0),
         todayRevenue: Number(s.today_revenue || 0),
         occupancyRate,
@@ -1593,6 +1730,593 @@ const getOwnerAnalytics = async (req, res) => {
   }
 };
 
+const mapOwnerTimeSlotRow = (s) => ({
+  slotId: Number(s.slot_id),
+  courtId: Number(s.court_id),
+  startTime: s.start_label,
+  endTime: s.end_label,
+  startFull: s.start_full,
+  endFull: s.end_full,
+  label: `${s.start_label} - ${s.end_label}`,
+  durationMinutes: getSlotDurationMinutes(s.start_full, s.end_full),
+  isPeak: resolvePeakFlag(s.is_peak, s.start_full),
+  isActive: Boolean(s.is_active),
+  bookingCount: Number(s.booking_count || 0),
+  activeBookingCount: Number(s.active_booking_count || 0)
+});
+
+const fetchOwnerTimeSlotsList = async (dbClient, courtId) => {
+  const result = await dbClient.query(
+    `SELECT
+       ts.slot_id,
+       ts.court_id,
+       TO_CHAR(ts.start_time, 'HH24:MI') AS start_label,
+       TO_CHAR(ts.end_time, 'HH24:MI') AS end_label,
+       TO_CHAR(ts.start_time, 'HH24:MI:SS') AS start_full,
+       TO_CHAR(ts.end_time, 'HH24:MI:SS') AS end_full,
+       ts.is_peak,
+       ts.is_active,
+       COUNT(bd.detail_id)::int AS booking_count,
+       COUNT(bd.detail_id) FILTER (
+         WHERE bd.active_flag = 1 AND b.status <> 'CANCELLED'
+       )::int AS active_booking_count
+     FROM time_slots ts
+     LEFT JOIN booking_details bd ON bd.slot_id = ts.slot_id
+     LEFT JOIN bookings b ON b.booking_id = bd.booking_id
+     WHERE ts.court_id = $1
+     GROUP BY ts.slot_id, ts.court_id, ts.start_time, ts.end_time, ts.is_peak, ts.is_active
+     ORDER BY ts.start_time ASC, ts.end_time ASC`,
+    [courtId]
+  );
+  return result.rows.map(mapOwnerTimeSlotRow);
+};
+
+// GET /api/owner/time-slots?courtId=...
+const getOwnerTimeSlots = async (req, res) => {
+  try {
+    const userId = Number(req.user?.userId);
+    const courtId = Number(req.query.courtId);
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({ success: false, message: 'Tài khoản không hợp lệ.' });
+    }
+    if (!Number.isSafeInteger(courtId) || courtId <= 0) {
+      return res.status(400).json({ success: false, message: 'Mã cụm sân không hợp lệ.' });
+    }
+
+    const ownerCheck = await pool.query(
+      `SELECT 1 FROM courts c JOIN users u ON u.user_id = c.owner_id
+       WHERE c.court_id = $1 AND u.user_id = $2 AND u.role = 'OWNER' AND u.status = 'ACTIVE'`,
+      [courtId, userId]
+    );
+    if (ownerCheck.rowCount === 0) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền quản lý khung giờ cụm sân này.' });
+    }
+
+    const slots = await fetchOwnerTimeSlotsList(pool, courtId);
+    return res.status(200).json({ success: true, total: slots.length, data: slots });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách khung giờ:', error.message);
+    return res.status(500).json({ success: false, message: 'Không thể tải danh sách khung giờ.' });
+  }
+};
+
+// POST /api/owner/time-slots
+const createOwnerTimeSlot = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const userId = Number(req.user?.userId);
+    const { courtId, startTime, endTime, isPeak, isActive } = req.body || {};
+    const parsedCourtId = Number(courtId);
+    const startObj = parseTimeToMinutes(startTime);
+    const endObj = parseTimeToMinutes(endTime);
+
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({ success: false, message: 'Tài khoản không hợp lệ.' });
+    }
+    if (!Number.isSafeInteger(parsedCourtId) || parsedCourtId <= 0) {
+      return res.status(400).json({ success: false, message: 'Mã cụm sân không hợp lệ.' });
+    }
+    if (!startObj || !endObj || endObj.minutes - startObj.minutes < 15) {
+      return res.status(400).json({
+        success: false,
+        message: 'Khung giờ không hợp lệ. Giờ kết thúc phải sau giờ bắt đầu ít nhất 15 phút.'
+      });
+    }
+
+    await client.query('BEGIN');
+
+    const ownerCheck = await client.query(
+      `SELECT 1 FROM courts c JOIN users u ON u.user_id = c.owner_id
+       WHERE c.court_id = $1 AND u.user_id = $2 AND u.role = 'OWNER' AND u.status = 'ACTIVE'
+       FOR UPDATE`,
+      [parsedCourtId, userId]
+    );
+    if (ownerCheck.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền thêm khung giờ cho cụm sân này.' });
+    }
+
+    const exactRes = await client.query(
+      `SELECT slot_id, is_active
+       FROM time_slots
+       WHERE court_id = $1 AND start_time = $2::time AND end_time = $3::time
+       FOR UPDATE`,
+      [parsedCourtId, startObj.pgTime, endObj.pgTime]
+    );
+
+    const existingId = exactRes.rowCount > 0 ? Number(exactRes.rows[0].slot_id) : 0;
+    if (exactRes.rowCount > 0 && exactRes.rows[0].is_active) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        message: `Khung giờ ${startObj.hhmm} - ${endObj.hhmm} đã tồn tại.`
+      });
+    }
+
+    const nextActive = isActive !== false;
+    const nextPeak = typeof isPeak === 'boolean' ? isPeak : isPeakHour(startObj.pgTime);
+
+    if (nextActive) {
+      const overlapRes = await client.query(
+        `SELECT TO_CHAR(start_time, 'HH24:MI') AS s_lbl, TO_CHAR(end_time, 'HH24:MI') AS e_lbl
+         FROM time_slots
+         WHERE court_id = $1
+           AND is_active = TRUE
+           AND slot_id <> $2
+           AND start_time < $4::time
+           AND end_time > $3::time
+         LIMIT 1`,
+        [parsedCourtId, existingId, startObj.pgTime, endObj.pgTime]
+      );
+      if (overlapRes.rowCount > 0) {
+        const conflict = overlapRes.rows[0];
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          success: false,
+          message: `Khung giờ ${startObj.hhmm} - ${endObj.hhmm} bị chồng lấn với khung giờ đang mở (${conflict.s_lbl} - ${conflict.e_lbl}).`
+        });
+      }
+    }
+
+    let savedSlotId;
+    let reactivated = false;
+    if (existingId > 0) {
+      await client.query(
+        `UPDATE time_slots SET is_active = $1, is_peak = $2 WHERE slot_id = $3`,
+        [nextActive, nextPeak, existingId]
+      );
+      savedSlotId = existingId;
+      reactivated = true;
+    } else {
+      const insertRes = await client.query(
+        `INSERT INTO time_slots (court_id, start_time, end_time, is_peak, is_active)
+         VALUES ($1, $2::time, $3::time, $4, $5)
+         RETURNING slot_id`,
+        [parsedCourtId, startObj.pgTime, endObj.pgTime, nextPeak, nextActive]
+      );
+      savedSlotId = Number(insertRes.rows[0].slot_id);
+    }
+
+    const allSlots = await fetchOwnerTimeSlotsList(client, parsedCourtId);
+    const createdSlot = allSlots.find(s => s.slotId === savedSlotId) || null;
+    await client.query('COMMIT');
+
+    return res.status(201).json({
+      success: true,
+      message: reactivated
+        ? `Đã kích hoạt lại khung giờ ${startObj.hhmm} - ${endObj.hhmm}!`
+        : `Đã thêm khung giờ ${startObj.hhmm} - ${endObj.hhmm} thành công!`,
+      data: createdSlot
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Lỗi thêm khung giờ:', error.message);
+    return res.status(500).json({ success: false, message: 'Không thể thêm khung giờ mới.' });
+  } finally {
+    client.release();
+  }
+};
+
+// PUT /api/owner/time-slots/:slotId
+const updateOwnerTimeSlot = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const userId = Number(req.user?.userId);
+    const slotId = Number(req.params.slotId);
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({ success: false, message: 'Tài khoản không hợp lệ.' });
+    }
+    if (!Number.isSafeInteger(slotId) || slotId <= 0) {
+      return res.status(400).json({ success: false, message: 'Mã khung giờ không hợp lệ.' });
+    }
+
+    const { startTime, endTime, isPeak, isActive } = req.body || {};
+
+    await client.query('BEGIN');
+
+    const existingRes = await client.query(
+      `SELECT ts.slot_id,
+              ts.court_id,
+              TO_CHAR(ts.start_time, 'HH24:MI') AS start_label,
+              TO_CHAR(ts.end_time, 'HH24:MI') AS end_label,
+              ts.is_peak,
+              ts.is_active
+       FROM time_slots ts
+       JOIN courts c ON c.court_id = ts.court_id
+       JOIN users u ON u.user_id = c.owner_id
+       WHERE ts.slot_id = $1 AND u.user_id = $2 AND u.role = 'OWNER' AND u.status = 'ACTIVE'
+       FOR UPDATE`,
+      [slotId, userId]
+    );
+    if (existingRes.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: 'Không tìm thấy khung giờ thuộc quyền quản lý.' });
+    }
+
+    const existing = existingRes.rows[0];
+    const parsedCourtId = Number(existing.court_id);
+    const nextStart = startTime !== undefined ? parseTimeToMinutes(startTime) : parseTimeToMinutes(existing.start_label);
+    const nextEnd = endTime !== undefined ? parseTimeToMinutes(endTime) : parseTimeToMinutes(existing.end_label);
+
+    if (!nextStart || !nextEnd || nextEnd.minutes - nextStart.minutes < 15) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        message: 'Mốc giờ không hợp lệ. Giờ kết thúc phải sau giờ bắt đầu ít nhất 15 phút.'
+      });
+    }
+
+    const timeChanged = nextStart.hhmm !== existing.start_label || nextEnd.hhmm !== existing.end_label;
+    const nextIsPeak = typeof isPeak === 'boolean' ? isPeak : Boolean(existing.is_peak);
+    const nextIsActive = typeof isActive === 'boolean' ? isActive : Boolean(existing.is_active);
+
+    if (timeChanged) {
+      const usedRes = await client.query(
+        'SELECT 1 FROM booking_details WHERE slot_id = $1 LIMIT 1',
+        [slotId]
+      );
+      if (usedRes.rowCount > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          success: false,
+          message: 'Khung giờ này đã có dữ liệu đặt sân nên không thể đổi mốc giờ. Vui lòng Tạm ẩn khung giờ cũ và tạo khung giờ mới.'
+        });
+      }
+
+      const dupRes = await client.query(
+        `SELECT 1 FROM time_slots
+         WHERE court_id = $1 AND slot_id <> $2 AND start_time = $3::time AND end_time = $4::time
+         LIMIT 1`,
+        [parsedCourtId, slotId, nextStart.pgTime, nextEnd.pgTime]
+      );
+      if (dupRes.rowCount > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          success: false,
+          message: `Khung giờ ${nextStart.hhmm} - ${nextEnd.hhmm} đã tồn tại.`
+        });
+      }
+    }
+
+    if (nextIsActive) {
+      const overlapRes = await client.query(
+        `SELECT TO_CHAR(start_time, 'HH24:MI') AS s_lbl, TO_CHAR(end_time, 'HH24:MI') AS e_lbl
+         FROM time_slots
+         WHERE court_id = $1
+           AND slot_id <> $2
+           AND is_active = TRUE
+           AND start_time < $4::time
+           AND end_time > $3::time
+         LIMIT 1`,
+        [parsedCourtId, slotId, nextStart.pgTime, nextEnd.pgTime]
+      );
+      if (overlapRes.rowCount > 0) {
+        const conflict = overlapRes.rows[0];
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          success: false,
+          message: `Không thể bật/cập nhật vì chồng lấn với khung giờ đang mở (${conflict.s_lbl} - ${conflict.e_lbl}).`
+        });
+      }
+    }
+
+    await client.query(
+      `UPDATE time_slots
+       SET start_time = $1::time,
+           end_time = $2::time,
+           is_peak = $3,
+           is_active = $4
+       WHERE slot_id = $5`,
+      [nextStart.pgTime, nextEnd.pgTime, nextIsPeak, nextIsActive, slotId]
+    );
+
+    const allSlots = await fetchOwnerTimeSlotsList(client, parsedCourtId);
+    const updatedSlot = allSlots.find(s => s.slotId === slotId) || null;
+    await client.query('COMMIT');
+
+    return res.status(200).json({
+      success: true,
+      message: `Đã cập nhật khung giờ ${nextStart.hhmm} - ${nextEnd.hhmm}!`,
+      data: updatedSlot
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Lỗi cập nhật khung giờ:', error.message);
+    return res.status(500).json({ success: false, message: 'Không thể cập nhật khung giờ.' });
+  } finally {
+    client.release();
+  }
+};
+
+// DELETE /api/owner/time-slots/:slotId
+const deleteOwnerTimeSlot = async (req, res) => {
+  try {
+    const userId = Number(req.user?.userId);
+    const slotId = Number(req.params.slotId);
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({ success: false, message: 'Tài khoản không hợp lệ.' });
+    }
+    if (!Number.isSafeInteger(slotId) || slotId <= 0) {
+      return res.status(400).json({ success: false, message: 'Mã khung giờ không hợp lệ.' });
+    }
+
+    const ownerCheck = await pool.query(
+      `SELECT ts.slot_id
+       FROM time_slots ts
+       JOIN courts c ON c.court_id = ts.court_id
+       JOIN users u ON u.user_id = c.owner_id
+       WHERE ts.slot_id = $1 AND u.user_id = $2 AND u.role = 'OWNER' AND u.status = 'ACTIVE'`,
+      [slotId, userId]
+    );
+    if (ownerCheck.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy khung giờ thuộc quyền quản lý.' });
+    }
+
+    const usedRes = await pool.query(
+      'SELECT 1 FROM booking_details WHERE slot_id = $1 LIMIT 1',
+      [slotId]
+    );
+    if (usedRes.rowCount > 0) {
+      await pool.query('UPDATE time_slots SET is_active = FALSE WHERE slot_id = $1', [slotId]);
+      return res.status(200).json({
+        success: true,
+        softDeleted: true,
+        message: 'Khung giờ đã có dữ liệu đặt sân nên đã được chuyển sang trạng thái Tạm ẩn.'
+      });
+    }
+
+    try {
+      await pool.query('DELETE FROM time_slots WHERE slot_id = $1', [slotId]);
+      return res.status(200).json({
+        success: true,
+        softDeleted: false,
+        message: 'Đã xóa khung giờ thành công!'
+      });
+    } catch (delErr) {
+      if (delErr.code === '23503' || delErr.code === '23001') {
+        await pool.query('UPDATE time_slots SET is_active = FALSE WHERE slot_id = $1', [slotId]);
+        return res.status(200).json({
+          success: true,
+          softDeleted: true,
+          message: 'Khung giờ đã có dữ liệu đặt sân nên đã được chuyển sang trạng thái Tạm ẩn.'
+        });
+      }
+      throw delErr;
+    }
+  } catch (error) {
+    console.error('Lỗi xóa khung giờ:', error.message);
+    return res.status(500).json({ success: false, message: 'Không thể xóa khung giờ.' });
+  }
+};
+
+// POST /api/owner/time-slots/generate
+const generateOwnerTimeSlots = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const userId = Number(req.user?.userId);
+    const {
+      courtId,
+      openTime,
+      closeTime,
+      durationMinutes = 60,
+      applyPeak = true,
+      peakStart = '17:00',
+      peakEnd = '21:00',
+      replaceExisting = false
+    } = req.body || {};
+
+    const parsedCourtId = Number(courtId);
+    const openObj = parseTimeToMinutes(openTime);
+    const closeObj = parseTimeToMinutes(closeTime);
+    const stepMinutes = Number(durationMinutes);
+
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({ success: false, message: 'Tài khoản không hợp lệ.' });
+    }
+    if (!Number.isSafeInteger(parsedCourtId) || parsedCourtId <= 0) {
+      return res.status(400).json({ success: false, message: 'Mã cụm sân không hợp lệ.' });
+    }
+    if (
+      !openObj || !closeObj ||
+      !Number.isInteger(stepMinutes) || stepMinutes < 15 || stepMinutes > 240 ||
+      closeObj.minutes - openObj.minutes < stepMinutes
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Khoảng giờ mở cửa, đóng cửa hoặc thời lượng mỗi ca (15-240 phút) không hợp lệ.'
+      });
+    }
+
+    let peakStartObj = null;
+    let peakEndObj = null;
+    if (applyPeak) {
+      peakStartObj = parseTimeToMinutes(peakStart);
+      peakEndObj = parseTimeToMinutes(peakEnd);
+      if (!peakStartObj || !peakEndObj || peakEndObj.minutes <= peakStartObj.minutes) {
+        return res.status(400).json({
+          success: false,
+          message: 'Khoảng giờ vàng không hợp lệ (giờ kết thúc phải sau giờ bắt đầu).'
+        });
+      }
+    }
+
+    const candidates = [];
+    for (let cursor = openObj.minutes; cursor + stepMinutes <= closeObj.minutes; cursor += stepMinutes) {
+      if (candidates.length >= 48) break;
+      const st = minutesToTimeObj(cursor);
+      const et = minutesToTimeObj(cursor + stepMinutes);
+      const isPeak = Boolean(
+        applyPeak &&
+        peakStartObj &&
+        peakEndObj &&
+        st.minutes >= peakStartObj.minutes &&
+        st.minutes < peakEndObj.minutes
+      );
+      candidates.push({ st, et, isPeak, key: `${st.hhmm}-${et.hhmm}` });
+    }
+
+    if (candidates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Không thể tạo khung giờ nào trong khoảng thời gian đã chọn.'
+      });
+    }
+
+    await client.query('BEGIN');
+
+    const ownerCheck = await client.query(
+      `SELECT 1 FROM courts c JOIN users u ON u.user_id = c.owner_id
+       WHERE c.court_id = $1 AND u.user_id = $2 AND u.role = 'OWNER' AND u.status = 'ACTIVE'
+       FOR UPDATE`,
+      [parsedCourtId, userId]
+    );
+    if (ownerCheck.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền cấu hình khung giờ cho cụm sân này.' });
+    }
+
+    const existingRes = await client.query(
+      `SELECT ts.slot_id,
+              TO_CHAR(ts.start_time, 'HH24:MI') AS start_label,
+              TO_CHAR(ts.end_time, 'HH24:MI') AS end_label,
+              ts.is_active,
+              COUNT(bd.detail_id)::int AS booking_count,
+              COUNT(bd.detail_id) FILTER (
+                WHERE bd.active_flag = 1 AND b.status <> 'CANCELLED' AND b.booking_date >= CURRENT_DATE
+              )::int AS upcoming_booking_count
+       FROM time_slots ts
+       LEFT JOIN booking_details bd ON bd.slot_id = ts.slot_id
+       LEFT JOIN bookings b ON b.booking_id = bd.booking_id
+       WHERE ts.court_id = $1
+       GROUP BY ts.slot_id, ts.start_time, ts.end_time, ts.is_active`,
+      [parsedCourtId]
+    );
+
+    const existingRows = existingRes.rows.map((r) => ({
+      slotId: Number(r.slot_id),
+      start: parseTimeToMinutes(r.start_label),
+      end: parseTimeToMinutes(r.end_label),
+      key: `${r.start_label}-${r.end_label}`,
+      isActive: Boolean(r.is_active),
+      bookingCount: Number(r.booking_count || 0),
+      upcomingBookingCount: Number(r.upcoming_booking_count || 0)
+    }));
+
+    let createdCount = 0;
+    let reactivatedCount = 0;
+    let skippedCount = 0;
+    const candidateKeySet = new Set(candidates.map(c => c.key));
+
+    if (replaceExisting) {
+      const conflictingUpcoming = existingRows.find(
+        (ex) => ex.upcomingBookingCount > 0 && !candidateKeySet.has(ex.key)
+      );
+      if (conflictingUpcoming) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          success: false,
+          message: `Không thể thay thế toàn bộ vì khung giờ ${conflictingUpcoming.start.hhmm} - ${conflictingUpcoming.end.hhmm} đang có đơn đặt từ hôm nay trở đi. Hãy dùng chế độ Thêm bổ sung hoặc giữ khung giờ này.`
+        });
+      }
+
+      await client.query(
+        `DELETE FROM time_slots ts
+         WHERE ts.court_id = $1
+           AND NOT EXISTS (SELECT 1 FROM booking_details bd WHERE bd.slot_id = ts.slot_id)`,
+        [parsedCourtId]
+      );
+      await client.query(
+        'UPDATE time_slots SET is_active = FALSE WHERE court_id = $1',
+        [parsedCourtId]
+      );
+
+      for (const c of candidates) {
+        const upRes = await client.query(
+          `INSERT INTO time_slots (court_id, start_time, end_time, is_peak, is_active)
+           VALUES ($1, $2::time, $3::time, $4, TRUE)
+           ON CONFLICT (court_id, start_time, end_time)
+           DO UPDATE SET is_active = TRUE, is_peak = EXCLUDED.is_peak
+           RETURNING (xmax = 0) AS inserted`,
+          [parsedCourtId, c.st.pgTime, c.et.pgTime, c.isPeak]
+        );
+        if (upRes.rows[0]?.inserted) createdCount++;
+        else reactivatedCount++;
+      }
+    } else {
+      const activeWindows = existingRows
+        .filter(ex => ex.isActive)
+        .map(ex => ({ start: ex.start.minutes, end: ex.end.minutes }));
+      const inactiveByKey = new Map(
+        existingRows.filter(ex => !ex.isActive).map(ex => [ex.key, ex])
+      );
+
+      for (const c of candidates) {
+        const overlapsActive = activeWindows.some(
+          w => w.start < c.et.minutes && w.end > c.st.minutes
+        );
+        if (overlapsActive) {
+          skippedCount++;
+          continue;
+        }
+        const inactiveMatch = inactiveByKey.get(c.key);
+        if (inactiveMatch) {
+          await client.query(
+            'UPDATE time_slots SET is_active = TRUE, is_peak = $1 WHERE slot_id = $2',
+            [c.isPeak, inactiveMatch.slotId]
+          );
+          reactivatedCount++;
+        } else {
+          await client.query(
+            `INSERT INTO time_slots (court_id, start_time, end_time, is_peak, is_active)
+             VALUES ($1, $2::time, $3::time, $4, TRUE)`,
+            [parsedCourtId, c.st.pgTime, c.et.pgTime, c.isPeak]
+          );
+          createdCount++;
+        }
+        activeWindows.push({ start: c.st.minutes, end: c.et.minutes });
+      }
+    }
+
+    const updatedSlots = await fetchOwnerTimeSlotsList(client, parsedCourtId);
+    await client.query('COMMIT');
+
+    return res.status(200).json({
+      success: true,
+      message: replaceExisting
+        ? `Đã thiết lập lại ${createdCount + reactivatedCount} khung giờ cho cụm sân.`
+        : `Đã tạo mới ${createdCount}, kích hoạt lại ${reactivatedCount} khung giờ (bỏ qua ${skippedCount} khung giờ trùng/chồng lấn).`,
+      summary: { createdCount, reactivatedCount, skippedCount },
+      data: updatedSlots
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Lỗi tạo nhanh khung giờ:', error.message);
+    return res.status(500).json({ success: false, message: 'Không thể tạo nhanh danh sách khung giờ.' });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   getSportTypes,
   getMyFacilities,
@@ -1602,6 +2326,11 @@ module.exports = {
   createSubCourt,
   updateSubCourt,
   deleteSubCourt,
+  getOwnerTimeSlots,
+  createOwnerTimeSlot,
+  updateOwnerTimeSlot,
+  deleteOwnerTimeSlot,
+  generateOwnerTimeSlots,
   getOwnerBookings,
   getOwnerSchedule,
   createWalkInBooking,

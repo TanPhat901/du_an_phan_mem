@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { formatLocalYMD } from '../utils/vietqr';
 
-export default function SearchFilterBar({ 
-  onSearch, 
-  onTabChange, 
-  activeSearchTab, 
-  selectedCity, 
+export default function SearchFilterBar({
+  onSearch,
+  onTabChange,
+  activeSearchTab,
+  selectedCity,
   setSelectedCity,
   keyword,
   setKeyword,
@@ -12,102 +13,152 @@ export default function SearchFilterBar({
   setPlayDate,
   selectedCategory,
   setSelectedCategory,
+  sportTypes = [],
   maxPrice,
-  setMaxPrice
+  setMaxPrice,
+  sortBy,
+  setSortBy,
+  onlyAvailable,
+  setOnlyAvailable,
+  favoritesOnly,
+  setFavoritesOnly,
+  currentUser,
+  favoritesCount = 0,
+  onResetFilters
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [areas, setAreas] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('http://localhost:5000/api/courts/areas')
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled && json?.success && Array.isArray(json.data)) {
+          setAreas(json.data);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onSearch();
   };
 
+  const todayYmd = formatLocalYMD();
+  const activeAdvancedCount =
+    (maxPrice ? 1 : 0) +
+    (onlyAvailable ? 1 : 0) +
+    (sortBy && sortBy !== 'featured' ? 1 : 0) +
+    (selectedCategory ? 1 : 0);
+
   return (
-    <section className="container mb-5" id="search-section" style={{ marginTop: '-1.5rem', position: 'relative', zIndex: 10 }}>
+    <section className="container search-card-floating mb-4" id="search-section">
       <div className="search-card-container">
-        {/* Tabs */}
-        <div className="d-flex align-items-center gap-4 border-bottom pb-2 mb-4">
-          <button
-            type="button"
-            className={`search-tab-btn d-flex align-items-center gap-2 ${activeSearchTab === 'search' ? 'active' : ''}`}
-            onClick={() => onTabChange('search')}
-          >
-            <i className="bi bi-search"></i>
-            <span>Tìm sân thể thao</span>
-          </button>
-          <button
-            type="button"
-            className={`search-tab-btn d-flex align-items-center gap-2 ${activeSearchTab === 'my-bookings' ? 'active' : ''}`}
-            onClick={() => onTabChange('my-bookings')}
-          >
-            <i className="bi bi-calendar-check"></i>
-            <span>Lịch đặt của tôi</span>
-          </button>
+        {/* Top Tabs Row */}
+        <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 border-bottom pb-2 mb-3">
+          <div className="d-flex align-items-center gap-4">
+            <button
+              type="button"
+              className={`search-tab-btn d-flex align-items-center gap-2 ${activeSearchTab === 'search' ? 'active' : ''}`}
+              onClick={() => onTabChange('search')}
+            >
+              <i className="bi bi-search"></i>
+              <span>Tìm sân thể thao</span>
+            </button>
+            <button
+              type="button"
+              className={`search-tab-btn d-flex align-items-center gap-2 ${activeSearchTab === 'my-bookings' ? 'active' : ''}`}
+              onClick={() => onTabChange('my-bookings')}
+            >
+              <i className="bi bi-calendar2-check"></i>
+              <span>Lịch đặt của tôi</span>
+            </button>
+          </div>
+
+          {currentUser && (
+            <button
+              type="button"
+              className={`btn btn-sm rounded-pill d-flex align-items-center gap-1 ${
+                favoritesOnly ? 'btn-danger text-white' : 'btn-outline-secondary'
+              }`}
+              onClick={() => setFavoritesOnly?.(!favoritesOnly)}
+            >
+              <i className={`bi ${favoritesOnly ? 'bi-heart-fill' : 'bi-heart'}`}></i>
+              <span>Sân đã lưu ({favoritesCount})</span>
+            </button>
+          )}
         </div>
 
-        {/* Search Inputs Form */}
+        {/* Segmented Horizontal Search Bar */}
         <form onSubmit={handleSubmit}>
-          <div className="row g-3 align-items-end">
-            {/* Input 1: Sport or Court Name */}
+          <div className="row g-3 align-items-center">
+            {/* Field 1: Keyword */}
             <div className="col-lg-4 col-md-6">
-              <label className="form-label small fw-semibold text-muted mb-1">Bạn muốn chơi gì?</label>
-              <div className="input-group">
-                <span className="input-group-text bg-white border-end-0 text-muted">
+              <label className="form-label small text-muted mb-1">Bạn muốn chơi gì?</label>
+              <div className="input-group input-group-sm">
+                <span className="input-group-text bg-transparent border-0 ps-0 text-muted">
                   <i className="bi bi-search"></i>
                 </span>
                 <input
                   type="text"
-                  className="form-control border-start-0 ps-0 shadow-none py-2"
-                  placeholder="Tìm sân, môn thể thao..."
+                  className="form-control border-0 bg-transparent shadow-none ps-1 fw-medium text-dark"
+                  placeholder="Tên sân, môn thể thao..."
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
                 />
               </div>
             </div>
 
-            {/* Input 2: Location / City */}
-            <div className="col-lg-3 col-md-6">
-              <label className="form-label small fw-semibold text-muted mb-1">Khu vực</label>
-              <div className="input-group">
-                <span className="input-group-text bg-white border-end-0 text-muted">
+            {/* Field 2: Area */}
+            <div className="col-lg-3 col-md-6 search-segment-divider">
+              <label className="form-label small text-muted mb-1">Khu vực</label>
+              <div className="input-group input-group-sm">
+                <span className="input-group-text bg-transparent border-0 ps-0 text-muted">
                   <i className="bi bi-geo-alt"></i>
                 </span>
                 <select
-                  className="form-select border-start-0 ps-0 shadow-none py-2 cursor-pointer"
+                  className="form-select border-0 bg-transparent shadow-none ps-1 fw-semibold text-dark cursor-pointer"
                   value={selectedCity}
                   onChange={(e) => setSelectedCity(e.target.value)}
                 >
                   <option value="">Tất cả khu vực</option>
-                  <option value="TP. Hồ Chí Minh">TP. Hồ Chí Minh</option>
-                  <option value="Hà Nội">Hà Nội</option>
-                  <option value="Đà Nẵng">Đà Nẵng</option>
-                  <option value="Bình Dương">Bình Dương</option>
+                  {areas.map((area) => (
+                    <option key={area} value={area}>
+                      {area}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
 
-            {/* Input 3: Date */}
-            <div className="col-lg-3 col-md-6">
-              <label className="form-label small fw-semibold text-muted mb-1">Ngày chơi</label>
-              <div className="input-group">
-                <span className="input-group-text bg-white border-end-0 text-muted">
+            {/* Field 3: Date */}
+            <div className="col-lg-3 col-md-6 search-segment-divider">
+              <label className="form-label small text-muted mb-1">Ngày chơi</label>
+              <div className="input-group input-group-sm">
+                <span className="input-group-text bg-transparent border-0 ps-0 text-muted">
                   <i className="bi bi-calendar3"></i>
                 </span>
                 <input
                   type="date"
-                  className="form-control border-start-0 ps-0 shadow-none py-2"
+                  className="form-control border-0 bg-transparent shadow-none ps-1 fw-semibold text-dark"
+                  min={todayYmd}
                   value={playDate}
-                  onChange={(e) => setPlayDate(e.target.value)}
+                  onChange={(e) => setPlayDate(e.target.value || todayYmd)}
                 />
               </div>
             </div>
 
-            {/* Submit Button */}
-            <div className="col-lg-2 col-md-6">
-              <button 
-                type="submit" 
-                className="btn btn-brand w-100 py-2 d-flex align-items-center justify-content-center gap-2"
-                style={{ height: '42px' }}
+            {/* Submit & Advanced Filter Trigger */}
+            <div className="col-lg-2 col-md-6 text-lg-end">
+              <button
+                type="submit"
+                className="btn btn-brand w-100 py-2 d-flex align-items-center justify-content-center gap-2 rounded-3"
               >
                 <i className="bi bi-search"></i>
                 <span>Tìm sân</span>
@@ -115,93 +166,99 @@ export default function SearchFilterBar({
             </div>
           </div>
 
-          {/* Advanced Filter Toggle Row */}
-          <div className="d-flex justify-content-between align-items-center pt-3 mt-2 border-top">
-            <div className="d-flex align-items-center gap-2 flex-wrap">
-              <span className="small text-muted">Gợi ý nhanh:</span>
-              <button
-                type="button"
-                className={`btn btn-sm ${selectedCategory === '' ? 'btn-dark' : 'btn-light border'} rounded-pill`}
-                onClick={() => setSelectedCategory('')}
-              >
-                Tất cả
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${selectedCategory === 'PADEL & PICKLEBALL' ? 'btn-success' : 'btn-light border'} rounded-pill`}
-                onClick={() => setSelectedCategory(selectedCategory === 'PADEL & PICKLEBALL' ? '' : 'PADEL & PICKLEBALL')}
-              >
-                Padel & Pickleball
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${selectedCategory === 'BÓNG ĐÁ & TENNIS' ? 'btn-success' : 'btn-light border'} rounded-pill`}
-                onClick={() => setSelectedCategory(selectedCategory === 'BÓNG ĐÁ & TENNIS' ? '' : 'BÓNG ĐÁ & TENNIS')}
-              >
-                Bóng đá & Tennis
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${selectedCategory === 'CẦU LÔNG TRONG NHÀ' ? 'btn-success' : 'btn-light border'} rounded-pill`}
-                onClick={() => setSelectedCategory(selectedCategory === 'CẦU LÔNG TRONG NHÀ' ? '' : 'CẦU LÔNG TRONG NHÀ')}
-              >
-                Cầu lông
-              </button>
+          <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-2 pt-2 border-top">
+            <div className="d-flex align-items-center gap-2">
+              <div className="form-check form-switch mb-0">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id="onlyAvailableSwitch"
+                  checked={onlyAvailable}
+                  onChange={(e) => setOnlyAvailable?.(e.target.checked)}
+                />
+                <label className="form-check-label small text-muted cursor-pointer" htmlFor="onlyAvailableSwitch">
+                  Chỉ hiện sân còn khung giờ trống
+                </label>
+              </div>
             </div>
 
             <button
               type="button"
-              className="btn btn-link text-decoration-none text-muted small p-0 d-flex align-items-center gap-1"
+              className="btn btn-link text-decoration-none text-secondary small p-0 d-inline-flex align-items-center gap-1 fw-medium"
               onClick={() => setShowAdvanced(!showAdvanced)}
             >
               <i className="bi bi-sliders"></i>
-              <span>{showAdvanced ? 'Ẩn bộ lọc' : 'Bộ lọc nâng cao +'}</span>
+              <span>Bộ lọc nâng cao</span>
+              {activeAdvancedCount > 0 && (
+                <span className="badge rounded-pill bg-success text-white ms-1" style={{ fontSize: '0.68rem' }}>
+                  {activeAdvancedCount}
+                </span>
+              )}
             </button>
           </div>
 
           {/* Expanded Advanced Filters */}
           {showAdvanced && (
             <div className="bg-light rounded-3 p-3 mt-3 border">
-              <div className="row g-3 align-items-center">
-                <div className="col-md-6">
+              <div className="row g-3 align-items-end">
+                <div className="col-md-3">
+                  <label className="form-label small fw-semibold text-muted mb-1">Môn thể thao</label>
+                  <select
+                    className="form-select form-select-sm"
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory?.(e.target.value)}
+                  >
+                    <option value="">Tất cả môn</option>
+                    {sportTypes.map((cat) => (
+                      <option key={cat.sport_type_id || cat.name} value={cat.name}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-md-4">
                   <label className="form-label small fw-semibold text-muted mb-1">
-                    Mức giá tối đa: <span className="text-dark fw-bold">{maxPrice ? `${Number(maxPrice).toLocaleString('vi-VN')}đ / giờ` : 'Không giới hạn'}</span>
+                    Giá tối đa:{' '}
+                    <span className="text-dark fw-bold">
+                      {maxPrice ? `${Number(maxPrice).toLocaleString('vi-VN')}đ/h` : 'Không giới hạn'}
+                    </span>
                   </label>
                   <input
                     type="range"
                     className="form-range"
                     min="100000"
-                    max="500000"
+                    max="1000000"
                     step="20000"
-                    value={maxPrice || 500000}
+                    value={maxPrice || 1000000}
                     onChange={(e) => setMaxPrice(e.target.value)}
                   />
-                  <div className="d-flex justify-content-between small text-muted">
-                    <span>100.000đ</span>
-                    <span>300.000đ</span>
-                    <span>500.000đ</span>
-                  </div>
                 </div>
 
-                <div className="col-md-6 text-end">
-                  <button 
-                    type="button" 
-                    className="btn btn-outline-secondary btn-sm me-2"
-                    onClick={() => {
-                      setKeyword('');
-                      setSelectedCity('');
-                      setSelectedCategory('');
-                      setMaxPrice('');
-                    }}
+                <div className="col-md-3">
+                  <label className="form-label small fw-semibold text-muted mb-1">Sắp xếp theo</label>
+                  <select
+                    className="form-select form-select-sm"
+                    value={sortBy}
+                    onChange={(e) => setSortBy?.(e.target.value)}
                   >
-                    Đặt lại bộ lọc
+                    <option value="featured">Đề xuất nổi bật</option>
+                    <option value="price_asc">Giá thấp đến cao</option>
+                    <option value="price_desc">Giá cao đến thấp</option>
+                    <option value="rating_desc">Đánh giá cao nhất</option>
+                  </select>
+                </div>
+
+                <div className="col-md-2 d-flex gap-2 justify-content-md-end">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => onResetFilters?.()}
+                  >
+                    Đặt lại
                   </button>
-                  <button 
-                    type="button" 
-                    className="btn btn-brand btn-sm"
-                    onClick={onSearch}
-                  >
-                    Áp dụng lọc
+                  <button type="button" className="btn btn-brand btn-sm" onClick={onSearch}>
+                    Lọc
                   </button>
                 </div>
               </div>
@@ -212,4 +269,3 @@ export default function SearchFilterBar({
     </section>
   );
 }
-

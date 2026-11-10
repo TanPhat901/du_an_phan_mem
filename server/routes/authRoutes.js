@@ -114,7 +114,6 @@ router.post('/send-otp', async (req, res) => {
       : `Mã OTP xác thực đã được gửi đến ${emailOrPhone}!`,
     data: {
       target: emailOrPhone,
-      otp: generatedOtp, // Trả về để ứng dụng hiển thị thông báo popup cho người dùng test nếu chưa cấu hình SMTP
       expiresInSeconds: 300
     }
   });
@@ -239,7 +238,6 @@ router.post('/register', async (req, res) => {
           email: newUser.email,
           phone: newUser.phone,
           role: newUser.role,
-          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
           token: signToken(newUser)
         }
       });
@@ -262,6 +260,7 @@ router.post('/register-owner', async (req, res) => {
     representativeName,
     phone,
     facilityName,
+    sportTypeId,
     sportTypes,
     city,
     district,
@@ -344,11 +343,41 @@ router.post('/register-owner', async (req, res) => {
         [newOwner.user_id, facilityName.trim()]
       );
 
+      // Xác định bộ môn thể thao thực tế từ DB
+      let resolvedSportTypeId = Number(sportTypeId);
+      if (Number.isSafeInteger(resolvedSportTypeId) && resolvedSportTypeId > 0) {
+        const spCheck = await pool.query(
+          `SELECT sport_type_id FROM sport_types WHERE sport_type_id = $1 AND status = 'ACTIVE'`,
+          [resolvedSportTypeId]
+        );
+        if (spCheck.rowCount === 0) resolvedSportTypeId = null;
+      } else {
+        resolvedSportTypeId = null;
+      }
+
+      if (!resolvedSportTypeId) {
+        const firstSport = await pool.query(
+          `SELECT sport_type_id FROM sport_types WHERE status = 'ACTIVE' ORDER BY sport_type_id ASC LIMIT 1`
+        );
+        if (firstSport.rowCount === 0) {
+          return res.status(400).json({ success: false, message: 'Chưa có bộ môn thể thao nào khả dụng.' });
+        }
+        resolvedSportTypeId = Number(firstSport.rows[0].sport_type_id);
+      }
+
       // Tạo cụm sân chờ duyệt trong bảng courts
       await pool.query(
         `INSERT INTO courts (sport_type_id, owner_id, name, address, area, description, price_per_slot, operational_status, is_visible)
          VALUES ($1, $2, $3, $4, $5, $6, $7, 'INACTIVE', FALSE)`,
-        [1, newOwner.user_id, facilityName.trim(), fullAddress, city || 'TP. Hồ Chí Minh', description || (Array.isArray(sportTypes) ? sportTypes.join(', ') : ''), 280000]
+        [
+          resolvedSportTypeId,
+          newOwner.user_id,
+          facilityName.trim(),
+          fullAddress,
+          city && city.trim() ? city.trim() : null,
+          description ? description.trim() : (Array.isArray(sportTypes) ? sportTypes.filter(Boolean).join(', ') : null),
+          0
+        ]
       );
 
       return res.status(201).json({

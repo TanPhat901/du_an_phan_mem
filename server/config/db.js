@@ -25,7 +25,7 @@ const checkDbConnection = async () => {
     return true;
   } catch (err) {
     isDbConnected = false;
-    console.warn('⚠️ Chưa kết nối được PostgreSQL (hệ thống sẽ dùng dữ liệu đệm dự phòng).');
+    console.warn('⚠️ Không thể kết nối cơ sở dữ liệu PostgreSQL.');
     console.warn(`   Chi tiết: ${err.message}`);
     return false;
   }

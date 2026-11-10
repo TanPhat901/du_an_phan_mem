@@ -1,90 +1,117 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 export default function Footer({ onOpenAuth, onOpenOwnerDashboard }) {
-  return (
-    <footer className="footer-dark pt-5 pb-4 mt-auto">
-      <div className="container">
-        {/* Top Footer Row */}
-        <div className="row align-items-center justify-content-between pb-4 border-bottom border-secondary border-opacity-25 gy-3">
-          {/* Logo & Slogan */}
-          <div className="col-md-5">
-            <div className="d-flex align-items-center gap-2 mb-2">
-              <div className="d-flex align-items-center justify-content-center bg-white bg-opacity-10 rounded-circle" style={{ width: '34px', height: '34px' }}>
-                <i className="bi bi-trophy-fill text-success fs-6"></i>
-              </div>
-              <span className="fw-bold fs-4 text-white">SportsBooking</span>
-            </div>
-            <p className="text-white-50 small mb-0">
-              Nền tảng đặt sân thể thao #1 Việt Nam - Đa cụm sân, đa bộ môn & đa chủ sân
-            </p>
-          </div>
+  const [showGuideModal, setShowGuideModal] = useState(false);
 
-          {/* Links & Hotline */}
-          <div className="col-md-7 d-flex flex-wrap align-items-center justify-content-md-end gap-3 gap-md-4">
-            <a 
-              href="#guide" 
-              className="small"
-              onClick={(e) => {
-                e.preventDefault();
-                alert('Quy trình đặt sân trực tuyến an toàn & nhanh chóng với SportsBooking.');
-              }}
-            >
-              Hướng dẫn
-            </a>
-            {onOpenOwnerDashboard && (
-              <a 
-                href="#owner-portal" 
-                className="small text-success fw-bold"
+  return (
+    <>
+      <footer className="bg-white border-top py-4 mt-auto">
+        <div className="container">
+          <div className="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3">
+            <div className="d-flex align-items-center gap-2">
+              <span className="brand-mark-box">
+                <i className="bi bi-trophy-fill"></i>
+              </span>
+              <span className="fw-bold text-brand-dark">SportsBooking</span>
+            </div>
+
+            <p className="text-muted small mb-0">
+              © 2026 SportsBooking • Nền tảng đặt sân thể thao trực tuyến.
+            </p>
+
+            <div className="d-flex flex-wrap align-items-center gap-3 gap-md-4 small">
+              <a
+                href="#guide"
+                className="text-secondary text-decoration-none"
                 onClick={(e) => {
                   e.preventDefault();
-                  onOpenOwnerDashboard();
+                  setShowGuideModal(true);
                 }}
               >
-                Kênh Chủ Sân
+                Hướng dẫn
               </a>
-            )}
-            <a 
-              href="#login" 
-              className="small"
-              onClick={(e) => {
-                e.preventDefault();
-                onOpenAuth('login');
-              }}
-            >
-              Đăng nhập
-            </a>
-            <a 
-              href="#register" 
-              className="small"
-              onClick={(e) => {
-                e.preventDefault();
-                onOpenAuth('register');
-              }}
-            >
-              Đăng ký
-            </a>
-
-            <div className="d-inline-flex align-items-center gap-2 bg-white bg-opacity-10 text-white rounded-pill px-3 py-1 small fw-semibold">
-              <i className="bi bi-telephone-fill text-success"></i>
-              <span>Hotline: 1900 8888</span>
+              {onOpenOwnerDashboard && (
+                <a
+                  href="#owner-portal"
+                  className="text-brand fw-semibold text-decoration-none"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenOwnerDashboard();
+                  }}
+                >
+                  Kênh chủ sân
+                </a>
+              )}
+              <a
+                href="#login"
+                className="text-secondary text-decoration-none"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onOpenAuth('login');
+                }}
+              >
+                Đăng nhập
+              </a>
+              <a
+                href="#register"
+                className="text-secondary text-decoration-none"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onOpenAuth('register');
+                }}
+              >
+                Đăng ký
+              </a>
             </div>
           </div>
         </div>
+      </footer>
 
-        {/* Bottom Footer Row */}
-        <div className="d-flex flex-column flex-md-row justify-content-between align-items-center pt-4 small text-white-50 gy-2">
-          <p className="mb-2 mb-md-0">
-            © 2024 SportsBooking Vietnam. Nền tảng kết nối người chơi và chủ sân thể thao toàn quốc.
-          </p>
-          <div className="d-flex align-items-center gap-3">
-            <span className="cursor-pointer hover-white">
-              Tiếng Việt <i className="bi bi-chevron-down small"></i>
-            </span>
-            <span>•</span>
-            <span>Hà Nội & TP.HCM & Đà Nẵng</span>
+      {showGuideModal && (
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 1065 }}>
+          <div className="modal-dialog modal-dialog-centered modal-lg">
+            <div className="modal-content rounded-3 border">
+              <div className="modal-header">
+                <h5 className="modal-title fw-bold text-dark">Hướng dẫn đặt sân</h5>
+                <button type="button" className="btn-close" onClick={() => setShowGuideModal(false)}></button>
+              </div>
+              <div className="modal-body p-4">
+                <div className="row g-3">
+                  <div className="col-md-4">
+                    <div className="p-3 bg-light rounded-3 border h-100">
+                      <div className="small fw-bold text-brand-dark mb-1">1. Tìm sân & lọc ngày</div>
+                      <p className="small text-muted mb-0">
+                        Chọn bộ môn, khu vực và ngày chơi để xem các cụm sân đang còn khung giờ trống.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="col-md-4">
+                    <div className="p-3 bg-light rounded-3 border h-100">
+                      <div className="small fw-bold text-brand-dark mb-1">2. Chọn sân con & giờ chơi</div>
+                      <p className="small text-muted mb-0">
+                        Vào chi tiết cụm sân, chọn sân thi đấu, khung giờ trống và gửi yêu cầu đặt lịch.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="col-md-4">
+                    <div className="p-3 bg-light rounded-3 border h-100">
+                      <div className="small fw-bold text-brand-dark mb-1">3. Xác nhận & Check-in</div>
+                      <p className="small text-muted mb-0">
+                        Theo dõi trạng thái đơn và mở mã QR trong trang Lịch đặt để check-in tại quầy.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer border-0 pt-0">
+                <button type="button" className="btn btn-brand btn-sm px-4" onClick={() => setShowGuideModal(false)}>
+                  Đóng
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </footer>
+      )}
+    </>
   );
 }

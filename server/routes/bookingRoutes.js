@@ -1,16 +1,24 @@
 const express = require('express');
 const router = express.Router();
-const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const authMiddleware = require('../middleware/authMiddleware');
 const { pool, isDbConnected } = require('../config/db');
 
-let fallbackPartners = [];
+const formatLocalYMD = (dateObj = new Date()) => {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
 
 const isPeakHour = (startTimeStr) => {
   const hour = parseInt(String(startTimeStr || '0').split(':')[0], 10);
   return hour >= 17 && hour < 21;
+};
+
+const resolvePeakFlag = (isPeakValue, startTimeStr) => {
+  if (typeof isPeakValue === 'boolean') return isPeakValue;
+  return isPeakHour(startTimeStr);
 };
 
 const parseBookingNumericId = (rawId) => {
@@ -59,13 +67,20 @@ const mapBookingRow = (b) => ({
   paymentStatus: b.payment_status || 'PENDING',
   status: b.status,
   statusLabel:
-    b.status === 'CONFIRMED'
-      ? 'Đã xác nhận'
-      : b.status === 'CANCELLED'
-        ? 'Đã hủy'
-        : 'Hoàn thành',
+    b.status === 'PENDING'
+      ? 'Chờ chủ sân xác nhận'
+      : b.status === 'CONFIRMED'
+        ? 'Đã xác nhận'
+        : b.status === 'CANCELLED'
+          ? 'Đã hủy'
+          : 'Đã Check-in / Hoàn thành',
   cancelReason: b.cancel_reason || '',
   note: b.note || '',
+  ownerPhone: b.owner_phone || '',
+  bankName: b.bank_name || '',
+  bankAccountNo: b.bank_account_no || '',
+  bankAccountName: b.bank_account_name || '',
+  hasReviewed: Boolean(b.has_reviewed),
   createdAt: b.created_at
 });
 
@@ -90,6 +105,14 @@ const BOOKING_SELECT_SQL = `
     sc.name AS sub_court_name,
     u.full_name AS user_full_name,
     u.phone AS user_phone,
+    uo.phone AS owner_phone,
+    op.bank_name,
+    op.bank_account_no,
+    op.bank_account_name,
+    EXISTS (
+      SELECT 1 FROM court_reviews cr
+      WHERE cr.court_id = b.court_id AND cr.user_id = b.user_id
+    ) AS has_reviewed,
     COALESCE(
       TO_CHAR(ts.start_time, 'HH24:MI') || ' - ' || TO_CHAR(ts.end_time, 'HH24:MI'),
       '—'
@@ -97,6 +120,8 @@ const BOOKING_SELECT_SQL = `
   FROM bookings b
   LEFT JOIN courts c ON b.court_id = c.court_id
   LEFT JOIN users u ON b.user_id = u.user_id
+  LEFT JOIN users uo ON c.owner_id = uo.user_id
+  LEFT JOIN owner_profiles op ON c.owner_id = op.owner_id
   LEFT JOIN booking_details bd ON bd.booking_id = b.booking_id
   LEFT JOIN time_slots ts ON ts.slot_id = bd.slot_id
   LEFT JOIN sub_courts sc ON sc.sub_court_id = COALESCE(bd.sub_court_id, b.sub_court_id)
@@ -179,17 +204,15 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/bookings - Tạo đơn đặt sân thật (kiểm tra slot trống + chống đặt trùng)
-router.post('/', async (req, res) => {
+// POST /api/bookings - Tạo đơn đặt sân thật (bắt buộc đăng nhập & chờ chủ sân xác nhận)
+router.post('/', authMiddleware, async (req, res) => {
   if (!isDbConnected()) {
     return res.status(503).json({ success: false, message: 'Không thể kết nối cơ sở dữ liệu để đặt sân.' });
   }
 
-  let authUser = null;
-  try {
-    authUser = extractOptionalUser(req);
-  } catch (err) {
-    return res.status(err.status || 401).json({ success: false, message: err.message });
+  const userId = Number(req.user?.userId);
+  if (!Number.isSafeInteger(userId) || userId <= 0) {
+    return res.status(401).json({ success: false, message: 'Vui lòng đăng nhập tài khoản để đặt sân.' });
   }
 
   const {
@@ -221,6 +244,14 @@ router.post('/', async (req, res) => {
     });
   }
 
+  const todayYmd = formatLocalYMD();
+  if (date < todayYmd) {
+    return res.status(400).json({
+      success: false,
+      message: 'Không thể đặt sân cho ngày trong quá khứ.'
+    });
+  }
+
   const cleanName = customerName.trim();
   const cleanPhone = phone.trim();
   const cleanPayment = typeof paymentMethod === 'string' && paymentMethod.trim() ? paymentMethod.trim() : 'Tại quầy';
@@ -230,11 +261,16 @@ router.post('/', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Kiểm tra cụm sân đang hoạt động
+    // 1. Kiểm tra cụm sân đang hoạt động + thông tin bank nhận tiền của chủ sân
     const courtRes = await client.query(
-      `SELECT court_id, name, address, price_per_slot, operational_status, is_visible
-       FROM courts
-       WHERE court_id = $1`,
+      `SELECT
+         c.court_id, c.name, c.address, c.price_per_slot, c.operational_status, c.is_visible,
+         uo.phone AS owner_phone,
+         op.bank_name, op.bank_account_no, op.bank_account_name
+       FROM courts c
+       LEFT JOIN users uo ON uo.user_id = c.owner_id
+       LEFT JOIN owner_profiles op ON op.owner_id = c.owner_id
+       WHERE c.court_id = $1`,
       [parsedCourtId]
     );
     if (courtRes.rowCount === 0 || !courtRes.rows[0].is_visible || courtRes.rows[0].operational_status !== 'ACTIVE') {
@@ -246,7 +282,7 @@ router.post('/', async (req, res) => {
     // 2. Kiểm tra sân con nếu được chọn
     let resolvedSubCourtId = null;
     let resolvedSubCourtName = null;
-    let normalPrice = Number(courtRow.price_per_slot || 200000);
+    let normalPrice = Number(courtRow.price_per_slot || 0);
     let peakPrice = normalPrice;
 
     if (parsedSubCourtId) {
@@ -283,7 +319,8 @@ router.post('/', async (req, res) => {
                 TO_CHAR(start_time, 'HH24:MI') AS start_label,
                 TO_CHAR(end_time, 'HH24:MI') AS end_label,
                 TO_CHAR(start_time, 'HH24:MI:SS') AS start_full,
-                TO_CHAR(end_time, 'HH24:MI:SS') AS end_full
+                TO_CHAR(end_time, 'HH24:MI:SS') AS end_full,
+                is_peak
          FROM time_slots
          WHERE slot_id = $1 AND court_id = $2 AND is_active = TRUE`,
         [parsedSlotId, parsedCourtId]
@@ -294,7 +331,8 @@ router.post('/', async (req, res) => {
                 TO_CHAR(start_time, 'HH24:MI') AS start_label,
                 TO_CHAR(end_time, 'HH24:MI') AS end_label,
                 TO_CHAR(start_time, 'HH24:MI:SS') AS start_full,
-                TO_CHAR(end_time, 'HH24:MI:SS') AS end_full
+                TO_CHAR(end_time, 'HH24:MI:SS') AS end_full,
+                is_peak
          FROM time_slots
          WHERE court_id = $1 AND is_active = TRUE
            AND (TO_CHAR(start_time, 'HH24:MI') || ' - ' || TO_CHAR(end_time, 'HH24:MI')) = $2
@@ -314,7 +352,7 @@ router.post('/', async (req, res) => {
     const slotRow = slotRes.rows[0];
     const resolvedSlotId = Number(slotRow.slot_id);
     const resolvedSlotLabel = `${slotRow.start_label} - ${slotRow.end_label}`;
-    const authoritativePrice = isPeakHour(slotRow.start_full) ? peakPrice : normalPrice;
+    const authoritativePrice = resolvePeakFlag(slotRow.is_peak, slotRow.start_full) ? peakPrice : normalPrice;
 
     // 4. Kiểm tra lịch khóa sân (court_blocks)
     const slotStartTs = `${date} ${slotRow.start_full}`;
@@ -337,38 +375,30 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // 5. Xác định user_id (từ JWT nếu đăng nhập, hoặc tài khoản khách theo SĐT)
-    let userId;
-    if (authUser && Number.isSafeInteger(Number(authUser.userId))) {
-      userId = Number(authUser.userId);
-    } else {
-      const guestEmail = `${cleanPhone}@guest.sportsbooking.vn`;
-      const existingGuest = await client.query(
-        'SELECT user_id FROM users WHERE phone = $1 OR LOWER(email) = $2 LIMIT 1',
-        [cleanPhone, guestEmail.toLowerCase()]
-      );
-      if (existingGuest.rowCount > 0) {
-        userId = Number(existingGuest.rows[0].user_id);
-      } else {
-        const randomHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
-        const newGuest = await client.query(
-          `INSERT INTO users (full_name, email, password_hash, phone, role, status)
-           VALUES ($1, $2, $3, $4, 'USER', 'ACTIVE') RETURNING user_id`,
-          [cleanName, guestEmail.toLowerCase(), randomHash, cleanPhone]
-        );
-        userId = Number(newGuest.rows[0].user_id);
-      }
+    // 5. Xác minh tài khoản người đặt trong PostgreSQL
+    const userRes = await client.query(
+      'SELECT user_id, status FROM users WHERE user_id = $1',
+      [userId]
+    );
+    if (userRes.rowCount === 0 || userRes.rows[0].status !== 'ACTIVE') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({
+        success: false,
+        message: 'Tài khoản của bạn không tồn tại hoặc đã bị khóa.'
+      });
     }
 
-    const paymentStatus = cleanPayment.toLowerCase().includes('tại quầy') ? 'PENDING' : 'PAID_ONLINE';
+    const paymentStatus = cleanPayment.toLowerCase().includes('tại quầy')
+      ? 'PENDING'
+      : 'WAITING_CONFIRM';
 
-    // 6. Chèn đơn đặt vào bookings
+    // 6. Chèn đơn đặt vào bookings với trạng thái PENDING (chờ chủ sân xác nhận)
     const bookingRes = await client.query(
       `INSERT INTO bookings (
          user_id, court_id, sub_court_id, booking_date, status, total_amount,
          customer_name, customer_phone, payment_method, payment_status, note
        )
-       VALUES ($1, $2, $3, $4::date, 'CONFIRMED', $5, $6, $7, $8, $9, $10)
+       VALUES ($1, $2, $3, $4::date, 'PENDING', $5, $6, $7, $8, $9, $10)
        RETURNING booking_id, created_at`,
       [
         userId,
@@ -395,8 +425,8 @@ router.post('/', async (req, res) => {
     // 8. Ghi lịch sử trạng thái
     await client.query(
       `INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by, reason)
-       VALUES ($1, NULL, 'CONFIRMED', $2, $3)`,
-      [savedBooking.booking_id, userId, 'Khách hàng đặt sân trực tuyến']
+       VALUES ($1, NULL, 'PENDING', $2, $3)`,
+      [savedBooking.booking_id, userId, 'Khách hàng gửi yêu cầu đặt sân (chờ chủ sân xác nhận)']
     );
 
     await client.query('COMMIT');
@@ -404,7 +434,7 @@ router.post('/', async (req, res) => {
     return res.status(201).json({
       success: true,
       source: 'PostgreSQL Database',
-      message: 'Đặt sân thành công! Lịch chơi của bạn đã được giữ chỗ.',
+      message: 'Đã gửi yêu cầu đặt sân! Vui lòng chờ chủ sân xác nhận.',
       data: {
         id: `BK-${savedBooking.booking_id}`,
         bookingId: Number(savedBooking.booking_id),
@@ -420,9 +450,13 @@ router.post('/', async (req, res) => {
         totalPrice: authoritativePrice,
         paymentMethod: cleanPayment,
         paymentStatus,
-        status: 'CONFIRMED',
-        statusLabel: 'Đã xác nhận',
+        status: 'PENDING',
+        statusLabel: 'Chờ chủ sân xác nhận',
         note: cleanNote || '',
+        ownerPhone: courtRow.owner_phone || '',
+        bankName: courtRow.bank_name || '',
+        bankAccountNo: courtRow.bank_account_no || '',
+        bankAccountName: courtRow.bank_account_name || '',
         createdAt: savedBooking.created_at
       }
     });
@@ -517,34 +551,6 @@ router.patch('/:id/cancel', authMiddleware, async (req, res) => {
   } finally {
     client.release();
   }
-});
-
-// POST /api/bookings/partner - Partner application
-router.post('/partner', async (req, res) => {
-  const { facilityName, ownerName, phone, address, courtCount } = req.body;
-  if (!facilityName || !ownerName || !phone) {
-    return res.status(400).json({
-      success: false,
-      message: 'Vui lòng điền đủ tên cụm sân, người đại diện và số điện thoại!'
-    });
-  }
-
-  const partnerId = `PTR-${Date.now()}`;
-  fallbackPartners.push({
-    id: partnerId,
-    facilityName,
-    ownerName,
-    phone,
-    address,
-    courtCount: courtCount || 1,
-    createdAt: new Date().toISOString()
-  });
-
-  res.status(201).json({
-    success: true,
-    message: 'Gửi yêu cầu hợp tác thành công! Đội ngũ SportsBooking sẽ liên hệ hỗ trợ bạn sớm nhất.',
-    data: { id: partnerId, facilityName, ownerName, phone }
-  });
 });
 
 module.exports = router;
