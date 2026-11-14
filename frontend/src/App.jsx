@@ -759,7 +759,31 @@ export default function App() {
         />
 
         {/* Editorial How It Works Band */}
-        <HowItWorksSection />
+        <HowItWorksSection
+          onSearchClick={() => {
+            const el = document.getElementById('search-section') || document.getElementById('featured-courts');
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth' });
+              setTimeout(() => {
+                const searchInput = document.querySelector('input[placeholder*="Tên sân"]');
+                if (searchInput) searchInput.focus();
+              }, 400);
+            }
+          }}
+          onSelectSlotsClick={() => {
+            const el = document.getElementById('featured-courts');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+          }}
+          onCheckInClick={() => {
+            if (currentUser) {
+              setCurrentView('my-bookings');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+              openAuthView('login');
+            }
+          }}
+          isLoggedIn={Boolean(currentUser)}
+        />
 
         {/* Partner Section Banner */}
         <PartnerBanner

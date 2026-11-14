@@ -369,6 +369,26 @@ body {
   padding: 4.25rem 0;
 }
 
+.step-interactive-card {
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+  user-select: none;
+}
+
+.step-interactive-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 28px rgba(11, 77, 60, 0.09) !important;
+  border-color: #94c7ab !important;
+}
+
+.step-interactive-card:hover .step-action-icon {
+  transform: translateX(4px);
+  transition: transform 0.2s ease;
+}
+
+.step-interactive-card .step-action-icon {
+  transition: transform 0.2s ease;
+}
+
 .partner-forest-band {
   background-color: var(--primary-green);
   color: #ffffff;
