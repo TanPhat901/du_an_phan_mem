@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import AccountMenu from './AccountMenu';
 import { formatDisplayDate, getStoredToken } from '../utils/vietqr';
 
-const API_ADMIN = `${API_ADMIN}/api/admin`;
+const API_ADMIN = `${API_BASE}/api/admin`;
 
 const formatCompactMoney = (amount) => {
   const num = Number(amount || 0);
