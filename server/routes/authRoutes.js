@@ -65,7 +65,7 @@ function checkAndConsumeOtp(target, inputOtp) {
 // POST /api/auth/send-otp
 // ==========================================
 router.post('/send-otp', async (req, res) => {
-  const { emailOrPhone } = req.body;
+  const { emailOrPhone, forReset } = req.body;
 
   if (!emailOrPhone || !emailOrPhone.trim()) {
     return res.status(400).json({
@@ -75,6 +75,24 @@ router.post('/send-otp', async (req, res) => {
   }
 
   const cleanTarget = emailOrPhone.trim().toLowerCase();
+
+  // Nếu gửi OTP để quên mật khẩu -> Kiểm tra tài khoản có tồn tại trong PostgreSQL không
+  if (forReset && isDbConnected()) {
+    try {
+      const userCheck = await pool.query(
+        'SELECT user_id FROM users WHERE LOWER(email) = $1 OR phone = $2',
+        [cleanTarget, cleanTarget]
+      );
+      if (userCheck.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Không tìm thấy tài khoản nào khớp với Email hoặc Số điện thoại này!'
+        });
+      }
+    } catch (dbErr) {
+      console.error('Lỗi kiểm tra user khi gửi OTP:', dbErr);
+    }
+  }
   
   // Sinh mã OTP ngẫu nhiên 6 chữ số thực thụ (Cryptographically Secure)
   const generatedOtp = crypto.randomInt(100000, 1000000).toString();
@@ -114,9 +132,79 @@ router.post('/send-otp', async (req, res) => {
       : `Mã OTP xác thực đã được gửi đến ${emailOrPhone}!`,
     data: {
       target: emailOrPhone,
-      expiresInSeconds: 300
+      expiresInSeconds: 300,
+      previewOtp: !emailSentReal ? generatedOtp : undefined
     }
   });
+});
+
+// ==========================================
+// 1b. API ĐẶT LẠI MẬT KHẨU (RESET PASSWORD)
+// POST /api/auth/reset-password
+// ==========================================
+router.post('/reset-password', async (req, res) => {
+  const { emailOrPhone, otp, newPassword } = req.body || {};
+
+  if (!emailOrPhone || !emailOrPhone.trim() || !otp || !newPassword) {
+    return res.status(400).json({
+      success: false,
+      message: 'Vui lòng cung cấp đầy đủ: Email/Số điện thoại, Mã OTP và Mật khẩu mới!'
+    });
+  }
+
+  if (typeof newPassword !== 'string' || newPassword.length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: 'Mật khẩu mới phải có tối thiểu 6 ký tự!'
+    });
+  }
+
+  // 1. Kiểm tra và sử dụng mã OTP
+  const otpResult = checkAndConsumeOtp(emailOrPhone, otp);
+  if (!otpResult.valid) {
+    return res.status(400).json({
+      success: false,
+      message: otpResult.message
+    });
+  }
+
+  if (!isDbConnected()) return databaseUnavailable(res);
+
+  try {
+    const cleanTarget = emailOrPhone.trim().toLowerCase();
+    const userCheck = await pool.query(
+      'SELECT user_id, email, phone, full_name FROM users WHERE LOWER(email) = $1 OR phone = $2',
+      [cleanTarget, cleanTarget]
+    );
+
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy tài khoản với Email hoặc Số điện thoại này!'
+      });
+    }
+
+    const user = userCheck.rows[0];
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    await pool.query(
+      'UPDATE users SET password_hash = $1 WHERE user_id = $2',
+      [hashedPassword, user.user_id]
+    );
+
+    console.log(`🔐 [RESET PASSWORD] Đặt lại mật khẩu thành công cho user: ${user.user_id} (${user.email || user.phone})`);
+
+    return res.json({
+      success: true,
+      message: 'Đặt lại mật khẩu thành công! Bạn có thể đăng nhập ngay với mật khẩu mới.'
+    });
+  } catch (err) {
+    console.error('Lỗi reset-password PostgreSQL:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Không thể đặt lại mật khẩu lúc này. Vui lòng thử lại sau.'
+    });
+  }
 });
 
 // ==========================================

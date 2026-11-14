@@ -32,6 +32,17 @@ export default function AuthPage({
   const [rememberMe, setRememberMe] = useState(true);
   const [agreeTerms, setAgreeTerms] = useState(true);
 
+  // Forgot password fields
+  const [forgotInput, setForgotInput] = useState('');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [showForgotNewPassword, setShowForgotNewPassword] = useState(false);
+  const [showForgotConfirmPassword, setShowForgotConfirmPassword] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [previewOtpNotice, setPreviewOtpNotice] = useState('');
+
   // UI state
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -50,6 +61,50 @@ export default function AuthPage({
   };
 
   const strength = getPasswordStrength(password);
+  const forgotStrength = getPasswordStrength(forgotNewPassword);
+
+  useEffect(() => {
+    let timer;
+    if (otpCountdown > 0) {
+      timer = setInterval(() => {
+        setOtpCountdown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [otpCountdown]);
+
+  const handleSendForgotOtp = async () => {
+    if (!forgotInput.trim()) {
+      setErrorMessage('Vui lòng nhập Email hoặc Số điện thoại đã đăng ký.');
+      return;
+    }
+    setLoading(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+    setPreviewOtpNotice('');
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailOrPhone: forgotInput.trim(), forReset: true })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setOtpSent(true);
+        setOtpCountdown(60);
+        setSuccessMessage(data.message || 'Mã xác thực OTP đã được gửi!');
+        if (data.data?.previewOtp) {
+          setPreviewOtpNotice(`Mã OTP thử nghiệm nhanh: ${data.data.previewOtp}`);
+        }
+      } else {
+        setErrorMessage(data.message || 'Không thể gửi mã OTP. Vui lòng kiểm tra lại thông tin.');
+      }
+    } catch {
+      setErrorMessage('Không thể kết nối máy chủ để gửi mã OTP.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -76,6 +131,51 @@ export default function AuthPage({
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
+
+    if (mode === 'forgot-password') {
+      if (!forgotInput.trim() || !forgotOtp.trim() || !forgotNewPassword) {
+        setErrorMessage('Vui lòng điền đầy đủ Email/Số điện thoại, Mã OTP và Mật khẩu mới.');
+        return;
+      }
+      if (forgotNewPassword.length < 6) {
+        setErrorMessage('Mật khẩu mới phải có tối thiểu 6 ký tự.');
+        return;
+      }
+      if (forgotNewPassword !== forgotConfirmPassword) {
+        setErrorMessage('Mật khẩu xác nhận không khớp.');
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            emailOrPhone: forgotInput.trim(),
+            otp: forgotOtp.trim(),
+            newPassword: forgotNewPassword
+          })
+        });
+        const data = await response.json();
+        if (response.ok && data.success) {
+          setSuccessMessage(data.message || 'Đặt lại mật khẩu thành công! Đang chuyển về màn hình đăng nhập...');
+          setLoginInput(forgotInput.trim());
+          setLoginPassword('');
+          setTimeout(() => {
+            setMode('login');
+            setSuccessMessage('Đặt lại mật khẩu thành công! Vui lòng đăng nhập với mật khẩu mới.');
+          }, 1800);
+        } else {
+          setErrorMessage(data.message || 'Không thể đặt lại mật khẩu.');
+        }
+      } catch {
+        setErrorMessage('Không thể kết nối máy chủ để đặt lại mật khẩu.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     if (mode === 'login') {
       if (!loginInput.trim() || !loginPassword) {
@@ -219,7 +319,32 @@ export default function AuthPage({
   }, [initialMode, initialRole]);
 
   const showcaseContent =
-    mode === 'login'
+    mode === 'forgot-password'
+      ? {
+          stepNum: '03',
+          eyebrow: 'BẢO MẬT TÀI KHOẢN',
+          titleLine1: 'Khôi phục truy cập.',
+          titleLine2: 'An toàn & nhanh chóng.',
+          subtitle: 'Nhận mã OTP xác thực qua Email hoặc Số điện thoại để tạo mật khẩu mới trong tích tắc.',
+          highlights: [
+            {
+              icon: 'bi-shield-lock',
+              title: 'Mã OTP bảo mật cao',
+              desc: 'Mã xác thực 6 chữ số ngẫu nhiên có hiệu lực trong 5 phút bảo vệ tài khoản.'
+            },
+            {
+              icon: 'bi-lightning-charge',
+              title: 'Đặt lại mật khẩu tức thì',
+              desc: 'Tạo mật khẩu mới và đăng nhập lại ngay lập tức mà không gián đoạn việc đặt sân.'
+            },
+            {
+              icon: 'bi-check2-circle',
+              title: 'Đồng bộ trên mọi thiết bị',
+              desc: 'Mật khẩu mới có hiệu lực ngay lập tức trên máy tính và điện thoại.'
+            }
+          ]
+        }
+      : mode === 'login'
       ? {
           stepNum: '01',
           eyebrow: 'CHÀO MỪNG TRỞ LẠI',
@@ -416,37 +541,60 @@ export default function AuthPage({
             <div className="col-lg-7">
               <div className="auth-form-card h-100 d-flex flex-column justify-content-center">
                 {/* Editorial Underline Mode Tabs */}
-                <div className="d-flex gap-4 border-bottom mb-4">
-                  <button
-                    type="button"
-                    className={`search-tab-btn pb-2 ${mode === 'login' ? 'active' : ''}`}
-                    onClick={() => switchMode('login')}
-                  >
-                    Đăng nhập
-                  </button>
-                  <button
-                    type="button"
-                    className={`search-tab-btn pb-2 ${mode === 'register' ? 'active' : ''}`}
-                    onClick={() => switchMode('register')}
-                  >
-                    Đăng ký tài khoản
-                  </button>
-                </div>
+                {mode === 'forgot-password' ? (
+                  <div className="d-flex align-items-center justify-content-between border-bottom pb-3 mb-4">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-link text-decoration-none text-muted p-0 d-flex align-items-center gap-1"
+                      onClick={() => switchMode('login')}
+                    >
+                      <i className="bi bi-arrow-left"></i>
+                      <span>Quay lại đăng nhập</span>
+                    </button>
+                    <span
+                      className="badge px-2 py-1 rounded-pill"
+                      style={{ backgroundColor: '#eef6f1', color: '#0f766e', fontSize: '0.75rem' }}
+                    >
+                      Khôi phục mật khẩu
+                    </span>
+                  </div>
+                ) : (
+                  <div className="d-flex gap-4 border-bottom mb-4">
+                    <button
+                      type="button"
+                      className={`search-tab-btn pb-2 ${mode === 'login' ? 'active' : ''}`}
+                      onClick={() => switchMode('login')}
+                    >
+                      Đăng nhập
+                    </button>
+                    <button
+                      type="button"
+                      className={`search-tab-btn pb-2 ${mode === 'register' ? 'active' : ''}`}
+                      onClick={() => switchMode('register')}
+                    >
+                      Đăng ký tài khoản
+                    </button>
+                  </div>
+                )}
 
                 <div className="mb-4">
                   <h1 className="h4 fw-bold text-dark mb-1">
-                    {mode === 'login'
-                      ? 'Đăng nhập tài khoản'
-                      : role === 'OWNER'
-                        ? 'Đăng ký đối tác Chủ sân'
-                        : 'Tạo tài khoản mới'}
+                    {mode === 'forgot-password'
+                      ? 'Quên mật khẩu?'
+                      : mode === 'login'
+                        ? 'Đăng nhập tài khoản'
+                        : role === 'OWNER'
+                          ? 'Đăng ký đối tác Chủ sân'
+                          : 'Tạo tài khoản mới'}
                   </h1>
                   <p className="text-muted small mb-0">
-                    {mode === 'login'
-                      ? 'Nhập email hoặc số điện thoại để vào trang đặt sân và lịch của bạn.'
-                      : role === 'OWNER'
-                        ? 'Hoàn tất thông tin tài khoản và hồ sơ cụm sân đầu tiên bên dưới.'
-                        : 'Điền thông tin cá nhân để bắt đầu đặt sân trên SportsBooking.'}
+                    {mode === 'forgot-password'
+                      ? 'Nhập email hoặc số điện thoại của bạn để nhận mã OTP và tạo mật khẩu mới.'
+                      : mode === 'login'
+                        ? 'Nhập email hoặc số điện thoại để vào trang đặt sân và lịch của bạn.'
+                        : role === 'OWNER'
+                          ? 'Hoàn tất thông tin tài khoản và hồ sơ cụm sân đầu tiên bên dưới.'
+                          : 'Điền thông tin cá nhân để bắt đầu đặt sân trên SportsBooking.'}
                   </p>
                 </div>
 
@@ -465,7 +613,156 @@ export default function AuthPage({
                 )}
 
                 <form onSubmit={handleSubmit}>
-                  {mode === 'login' ? (
+                  {mode === 'forgot-password' ? (
+                    <>
+                      {/* Email/Phone + Send OTP button */}
+                      <div className="mb-3">
+                        <label className="form-label small fw-semibold text-secondary mb-1">
+                          Email hoặc Số điện thoại đã đăng ký <span className="text-danger">*</span>
+                        </label>
+                        <div className="input-group">
+                          <span className="input-group-text bg-white border-end-0 text-muted">
+                            <i className="bi bi-person"></i>
+                          </span>
+                          <input
+                            type="text"
+                            className="form-control border-start-0"
+                            placeholder="0912345678 hoặc email@domain.com"
+                            value={forgotInput}
+                            onChange={(e) => setForgotInput(e.target.value)}
+                            required
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-outline-secondary px-3 small fw-semibold"
+                            onClick={handleSendForgotOtp}
+                            disabled={loading || otpCountdown > 0}
+                          >
+                            {otpCountdown > 0 ? `Gửi lại (${otpCountdown}s)` : otpSent ? 'Gửi lại OTP' : 'Gửi mã OTP'}
+                          </button>
+                        </div>
+                        {previewOtpNotice && (
+                          <div className="small text-success mt-1 fw-semibold d-flex align-items-center gap-1">
+                            <i className="bi bi-info-circle"></i>
+                            <span>{previewOtpNotice}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* OTP 6-digits */}
+                      <div className="mb-3">
+                        <label className="form-label small fw-semibold text-secondary mb-1">
+                          Mã xác thực OTP (6 chữ số) <span className="text-danger">*</span>
+                        </label>
+                        <div className="auth-input-group">
+                          <i className="bi bi-shield-check auth-input-icon"></i>
+                          <input
+                            type="text"
+                            className="form-control"
+                            placeholder="Nhập mã OTP 6 số"
+                            maxLength={6}
+                            value={forgotOtp}
+                            onChange={(e) => setForgotOtp(e.target.value.replace(/\D/g, ''))}
+                            required
+                          />
+                        </div>
+                        <div className="form-text" style={{ fontSize: '0.75rem' }}>
+                          Mã OTP gồm 6 chữ số có hiệu lực trong 5 phút.
+                        </div>
+                      </div>
+
+                      {/* New Password */}
+                      <div className="mb-3">
+                        <label className="form-label small fw-semibold text-secondary mb-1">
+                          Mật khẩu mới <span className="text-danger">*</span>
+                        </label>
+                        <div className="auth-input-group">
+                          <i className="bi bi-lock auth-input-icon"></i>
+                          <input
+                            type={showForgotNewPassword ? 'text' : 'password'}
+                            className="form-control"
+                            placeholder="Tối thiểu 6 ký tự"
+                            value={forgotNewPassword}
+                            onChange={(e) => setForgotNewPassword(e.target.value)}
+                            required
+                          />
+                          <button
+                            type="button"
+                            className="auth-input-toggle"
+                            onClick={() => setShowForgotNewPassword(!showForgotNewPassword)}
+                          >
+                            <i className={`bi ${showForgotNewPassword ? 'bi-eye-slash' : 'bi-eye'}`}></i>
+                          </button>
+                        </div>
+                        {forgotNewPassword && (
+                          <div className="mt-2">
+                            <div className="d-flex justify-content-between align-items-center mb-1">
+                              <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Độ mạnh mật khẩu:</span>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: forgotStrength.color }}>
+                                {forgotStrength.text}
+                              </span>
+                            </div>
+                            <div className="progress" style={{ height: '4px', backgroundColor: '#e5e7eb' }}>
+                              <div
+                                className="progress-bar"
+                                style={{
+                                  width: `${(forgotStrength.level / 4) * 100}%`,
+                                  backgroundColor: forgotStrength.color,
+                                  transition: 'all 0.3s ease'
+                                }}
+                              ></div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Confirm New Password */}
+                      <div className="mb-4">
+                        <label className="form-label small fw-semibold text-secondary mb-1">
+                          Xác nhận mật khẩu mới <span className="text-danger">*</span>
+                        </label>
+                        <div className="auth-input-group">
+                          <i className="bi bi-shield-lock auth-input-icon"></i>
+                          <input
+                            type={showForgotConfirmPassword ? 'text' : 'password'}
+                            className="form-control"
+                            placeholder="Nhập lại mật khẩu mới"
+                            value={forgotConfirmPassword}
+                            onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                            required
+                          />
+                          <button
+                            type="button"
+                            className="auth-input-toggle"
+                            onClick={() => setShowForgotConfirmPassword(!showForgotConfirmPassword)}
+                          >
+                            <i className={`bi ${showForgotConfirmPassword ? 'bi-eye-slash' : 'bi-eye'}`}></i>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Submit button */}
+                      <button
+                        type="submit"
+                        className="btn btn-brand w-100 py-2 rounded-3 fw-semibold mb-3 d-flex align-items-center justify-content-center gap-2"
+                        disabled={loading}
+                      >
+                        <span>{loading ? 'Đang cập nhật...' : 'Đặt lại mật khẩu'}</span>
+                        {!loading && <i className="bi bi-check2"></i>}
+                      </button>
+
+                      <div className="text-center small text-muted">
+                        Nhớ lại mật khẩu?{' '}
+                        <button
+                          type="button"
+                          className="btn btn-link p-0 fw-semibold text-decoration-none text-brand-dark small"
+                          onClick={() => switchMode('login')}
+                        >
+                          Đăng nhập ngay
+                        </button>
+                      </div>
+                    </>
+                  ) : mode === 'login' ? (
                     <>
                       <div className="mb-3">
                         <label className="form-label small fw-semibold text-secondary mb-1">
@@ -508,17 +805,31 @@ export default function AuthPage({
                         </div>
                       </div>
 
-                      <div className="form-check mb-4">
-                        <input
-                          className="form-check-input cursor-pointer"
-                          type="checkbox"
-                          id="rememberMeCheck"
-                          checked={rememberMe}
-                          onChange={(e) => setRememberMe(e.target.checked)}
-                        />
-                        <label className="form-check-label small text-muted cursor-pointer" htmlFor="rememberMeCheck">
-                          Ghi nhớ đăng nhập trên thiết bị này
-                        </label>
+                      <div className="d-flex justify-content-between align-items-center mb-4">
+                        <div className="form-check mb-0">
+                          <input
+                            className="form-check-input cursor-pointer"
+                            type="checkbox"
+                            id="rememberMeCheck"
+                            checked={rememberMe}
+                            onChange={(e) => setRememberMe(e.target.checked)}
+                          />
+                          <label className="form-check-label small text-muted cursor-pointer" htmlFor="rememberMeCheck">
+                            Ghi nhớ đăng nhập
+                          </label>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-link p-0 fw-semibold text-decoration-none text-brand-dark small"
+                          onClick={() => {
+                            setErrorMessage('');
+                            setSuccessMessage('');
+                            setForgotInput(loginInput || '');
+                            setMode('forgot-password');
+                          }}
+                        >
+                          Quên mật khẩu?
+                        </button>
                       </div>
 
                       <button
