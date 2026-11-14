@@ -2,16 +2,27 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 // PostgreSQL Connection Pool
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT, 10) || 5432,
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
-  database: process.env.DB_NAME || 'sportsbooking_db',
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 3000,
-});
+// Hỗ trợ cả Local PostgreSQL và Cloud PostgreSQL (Neon, Supabase, Render, Railway qua DATABASE_URL)
+const poolConfig = process.env.DATABASE_URL
+  ? {
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
+    }
+  : {
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT, 10) || 5432,
+      user: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || 'postgres',
+      database: process.env.DB_NAME || 'sportsbooking_db',
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 3000,
+    };
+
+const pool = new Pool(poolConfig);
 
 let isDbConnected = false;
 

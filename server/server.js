@@ -39,8 +39,13 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Start Server and check PostgreSQL
-app.listen(PORT, async () => {
-  console.log(`🚀 SportsBooking Server is running on http://localhost:${PORT}`);
-  await checkDbConnection();
-});
+// Start Server and check PostgreSQL (Standalone Mode)
+if (require.main === module) {
+  app.listen(PORT, async () => {
+    console.log(`🚀 SportsBooking Server is running on http://localhost:${PORT}`);
+    await checkDbConnection();
+  });
+}
+
+// Export for Vercel Serverless Functions
+module.exports = app;

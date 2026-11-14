@@ -1,3 +1,4 @@
+import { API_BASE } from './utils/apiConfig';
 import React, { useState, useEffect, useCallback } from 'react';
 import Navbar from './components/Navbar';
 import HeroSection from './components/HeroSection';
@@ -28,7 +29,7 @@ export default function App() {
       setAuthReady(true);
       return;
     }
-    fetch('http://localhost:5000/api/auth/me', {
+    fetch(`${API_BASE}/api/auth/me`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(async (res) => {
@@ -98,7 +99,7 @@ export default function App() {
       return;
     }
     try {
-      const res = await fetch('http://localhost:5000/api/courts/favorites/my', {
+      const res = await fetch(`${API_BASE}/api/courts/favorites/my`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const json = await res.json().catch(() => ({}));
@@ -118,7 +119,7 @@ export default function App() {
     }
     setBookingsLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/bookings/my', {
+      const res = await fetch(`${API_BASE}/api/bookings/my`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const json = await res.json().catch(() => ({}));
@@ -135,7 +136,7 @@ export default function App() {
   const lookupBookingsByPhone = async (phone) => {
     setBookingsLoading(true);
     try {
-      const res = await fetch(`http://localhost:5000/api/bookings?phone=${encodeURIComponent(phone)}`);
+      const res = await fetch(`${API_BASE}/api/bookings?phone=${encodeURIComponent(phone)}`);
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.success && Array.isArray(json.data)) {
         setBookings(json.data);
@@ -151,7 +152,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('http://localhost:5000/api/courts/sport-types')
+    fetch(`${API_BASE}/api/courts/sport-types`)
       .then((res) => res.json())
       .then((json) => {
         if (!cancelled && json?.success && Array.isArray(json.data)) {
@@ -199,7 +200,7 @@ export default function App() {
       const token = getStoredToken();
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
-      const res = await fetch(`http://localhost:5000/api/courts?${params.toString()}`, { headers });
+      const res = await fetch(`${API_BASE}/api/courts?${params.toString()}`, { headers });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success || !Array.isArray(data.data)) {
         throw new Error(data.message || 'Không thể tải danh sách sân thể thao.');
@@ -258,7 +259,7 @@ export default function App() {
     const method = currentlySaved ? 'DELETE' : 'POST';
 
     try {
-      const res = await fetch(`http://localhost:5000/api/courts/${cId}/favorite`, {
+      const res = await fetch(`${API_BASE}/api/courts/${cId}/favorite`, {
         method,
         headers: { Authorization: `Bearer ${token}` }
       });

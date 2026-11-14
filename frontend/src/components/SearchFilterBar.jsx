@@ -1,3 +1,4 @@
+import { API_BASE } from '../utils/apiConfig';
 import React, { useState, useEffect } from 'react';
 import { formatLocalYMD } from '../utils/vietqr';
 
@@ -31,7 +32,7 @@ export default function SearchFilterBar({
 
   useEffect(() => {
     let cancelled = false;
-    fetch('http://localhost:5000/api/courts/areas')
+    fetch(`${API_BASE}/api/courts/areas`)
       .then((res) => res.json())
       .then((json) => {
         if (!cancelled && json?.success && Array.isArray(json.data)) {

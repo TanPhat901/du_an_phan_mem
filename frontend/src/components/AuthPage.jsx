@@ -1,3 +1,4 @@
+import { API_BASE } from '../utils/apiConfig';
 import React, { useState, useEffect } from 'react';
 
 export default function AuthPage({
@@ -52,7 +53,7 @@ export default function AuthPage({
 
   useEffect(() => {
     let cancelled = false;
-    fetch('http://localhost:5000/api/courts/sport-types')
+    fetch(`${API_BASE}/api/courts/sport-types`)
       .then((res) => res.json())
       .then((json) => {
         if (cancelled) return;
@@ -84,7 +85,7 @@ export default function AuthPage({
 
       setLoading(true);
       try {
-        const response = await fetch('http://localhost:5000/api/auth/login', {
+        const response = await fetch(`${API_BASE}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ emailOrPhone: loginInput, password: loginPassword })
@@ -145,7 +146,7 @@ export default function AuthPage({
 
         setLoading(true);
         try {
-          const response = await fetch('http://localhost:5000/api/auth/register-owner', {
+          const response = await fetch(`${API_BASE}/api/auth/register-owner`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -182,7 +183,7 @@ export default function AuthPage({
 
       setLoading(true);
       try {
-        const response = await fetch('http://localhost:5000/api/auth/register', {
+        const response = await fetch(`${API_BASE}/api/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

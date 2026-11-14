@@ -1,3 +1,4 @@
+import { API_BASE } from '../utils/apiConfig';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { formatLocalYMD, getStoredToken } from '../utils/vietqr';
 
@@ -121,7 +122,7 @@ export default function CourtDetailPage({
     const token = getStoredToken();
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
-    fetch(`http://localhost:5000/api/courts/${courtId}`, { headers })
+    fetch(`${API_BASE}/api/courts/${courtId}`, { headers })
       .then(async (res) => {
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json.success || !json.data) {
@@ -157,7 +158,7 @@ export default function CourtDetailPage({
     const token = getStoredToken();
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
     try {
-      const res = await fetch(`http://localhost:5000/api/courts/${courtId}/reviews`, { headers });
+      const res = await fetch(`${API_BASE}/api/courts/${courtId}/reviews`, { headers });
       const json = await res.json();
       if (!res.ok || !json.success || !json.data) {
         throw new Error(json.message || 'Không thể tải đánh giá.');
@@ -208,7 +209,7 @@ export default function CourtDetailPage({
       if (selectedSubCourt?.id) {
         params.append('subCourtId', String(selectedSubCourt.id));
       }
-      const res = await fetch(`http://localhost:5000/api/courts/${courtId}/availability?${params.toString()}`);
+      const res = await fetch(`${API_BASE}/api/courts/${courtId}/availability?${params.toString()}`);
       const json = await res.json();
       if (!res.ok || !json.success || !json.data) {
         throw new Error(json.message || 'Không thể kiểm tra khung giờ.');
@@ -275,7 +276,7 @@ export default function CourtDetailPage({
 
     setReviewBusy(true);
     try {
-      const res = await fetch(`http://localhost:5000/api/courts/${courtId}/reviews`, {
+      const res = await fetch(`${API_BASE}/api/courts/${courtId}/reviews`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -318,7 +319,7 @@ export default function CourtDetailPage({
     setReviewErr('');
     setReviewMsg('');
     try {
-      const res = await fetch(`http://localhost:5000/api/courts/${courtId}/reviews/my`, {
+      const res = await fetch(`${API_BASE}/api/courts/${courtId}/reviews/my`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });

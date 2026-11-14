@@ -1,3 +1,4 @@
+import { API_BASE } from '../utils/apiConfig';
 import React, { useState, useMemo, useRef } from 'react';
 import TicketBarcode from './TicketBarcode';
 import { formatDisplayDate, getStoredToken } from '../utils/vietqr';
@@ -103,7 +104,7 @@ export default function MyBookingsPage({
     setActionMsg('');
 
     try {
-      const response = await fetch(`http://localhost:5000/api/bookings/${encodeURIComponent(cancelTarget.id)}/cancel`, {
+      const response = await fetch(`${API_BASE}/api/bookings/${encodeURIComponent(cancelTarget.id)}/cancel`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
