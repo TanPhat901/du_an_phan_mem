@@ -1,8 +1,9 @@
+import { API_BASE } from '../utils/apiConfig';
 import React, { useState, useEffect, useCallback } from 'react';
 import AccountMenu from './AccountMenu';
 import { formatDisplayDate, getStoredToken } from '../utils/vietqr';
 
-const API_BASE = 'http://localhost:5000/api/admin';
+const API_ADMIN = `${API_ADMIN}/api/admin`;
 
 const formatCompactMoney = (amount) => {
   const num = Number(amount || 0);
@@ -132,7 +133,7 @@ export default function AdminDashboard({
 
   const authFetch = useCallback(async (path, options = {}) => {
     const token = getStoredToken();
-    const res = await fetch(`${API_BASE}${path}`, {
+    const res = await fetch(`${API_ADMIN}${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',

@@ -1,3 +1,4 @@
+import { API_BASE } from '../utils/apiConfig';
 import React, { useState, useEffect } from 'react';
 import TicketBarcode from './TicketBarcode';
 import { formatLocalYMD, getStoredToken } from '../utils/vietqr';
@@ -57,7 +58,7 @@ export default function BookingModal({
         Authorization: `Bearer ${token}`
       };
 
-      const response = await fetch('http://localhost:5000/api/bookings', {
+      const response = await fetch(`${API_BASE}/api/bookings`, {
         method: 'POST',
         headers,
         body: JSON.stringify({

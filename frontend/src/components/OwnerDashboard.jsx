@@ -1,3 +1,4 @@
+import { API_BASE } from '../utils/apiConfig';
 import React, { useState, useEffect, useCallback } from 'react';
 import AccountMenu from './AccountMenu';
 
@@ -175,7 +176,7 @@ export default function OwnerDashboard({
   const ownerRequest = useCallback(async (path, options = {}) => {
     const token = getToken();
     if (!token) throw new Error('Không tìm thấy JWT. Vui lòng đăng nhập lại bằng tài khoản OWNER.');
-    const response = await fetch(`http://localhost:5000/api/owner${path}`, {
+    const response = await fetch(`${API_BASE}/api/owner${path}`, {
       ...options,
       headers: {
         Authorization: `Bearer ${token}`,

@@ -1,3 +1,4 @@
+import { API_BASE } from '../utils/apiConfig';
 import React, { useEffect, useState, useCallback } from 'react';
 import { getStoredToken } from '../utils/vietqr';
 
@@ -53,7 +54,7 @@ export default function ProfilePage({
     }
     setBusy(true);
     try {
-      const res = await fetch('http://localhost:5000/api/profile/me', {
+      const res = await fetch(`${API_BASE}/api/profile/me`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -76,7 +77,7 @@ export default function ProfilePage({
     if (!token) return;
     setFavLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/courts/favorites/my', {
+      const res = await fetch(`${API_BASE}/api/courts/favorites/my`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -118,7 +119,7 @@ export default function ProfilePage({
     }
     setBusy(true);
     try {
-      const response = await fetch('http://localhost:5000/api/profile/me', {
+      const response = await fetch(`${API_BASE}/api/profile/me`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ fullName: form.fullName, phone: form.phone, email: form.email })
@@ -157,7 +158,7 @@ export default function ProfilePage({
 
     setPwBusy(true);
     try {
-      const res = await fetch('http://localhost:5000/api/profile/password', {
+      const res = await fetch(`${API_BASE}/api/profile/password`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
