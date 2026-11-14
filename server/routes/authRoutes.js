@@ -116,7 +116,7 @@ router.post('/send-otp', async (req, res) => {
   // Nếu là email và đã cấu hình SMTP trong .env -> Gửi email thật vào hòm thư
   if (cleanTarget.includes('@') && process.env.SMTP_USER && process.env.SMTP_PASS) {
     try {
-      await sendOtpEmail(cleanTarget, generatedOtp);
+      await sendOtpEmail(cleanTarget, generatedOtp, forReset ? 'reset' : 'register');
       emailSentReal = true;
       console.log(`✅ [SMTP] Đã gửi email thành công tới ${cleanTarget}!`);
     } catch (err) {
