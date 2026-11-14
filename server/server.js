@@ -17,6 +17,14 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// Serverless Database Connection Assurance Middleware
+app.use(async (req, res, next) => {
+  if (!isDbConnected()) {
+    await checkDbConnection().catch(() => {});
+  }
+  next();
+});
+
 // Routes
 app.use('/api/courts', courtRoutes);
 app.use('/api/bookings', bookingRoutes);
@@ -27,14 +35,17 @@ app.use('/api/admin', adminRoutes);
 
 // Health check endpoint with DB status
 app.get('/api/health', (req, res) => {
+  const isCloud = Boolean(process.env.DATABASE_URL);
   res.json({
     status: 'ok',
     message: 'SportsBooking Backend API is running smoothly!',
     database: {
       type: 'PostgreSQL',
       connected: isDbConnected(),
-      host: process.env.DB_HOST || 'localhost',
-      dbName: process.env.DB_NAME || 'sportsbooking_db'
+      mode: isCloud ? 'Cloud (Neon/Supabase)' : 'Local',
+      hasDatabaseUrl: isCloud,
+      host: isCloud ? 'Neon Cloud PostgreSQL' : (process.env.DB_HOST || 'localhost'),
+      dbName: isCloud ? 'neondb' : (process.env.DB_NAME || 'sportsbooking_db')
     }
   });
 });

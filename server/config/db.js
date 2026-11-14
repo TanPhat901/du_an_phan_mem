@@ -24,7 +24,7 @@ const poolConfig = process.env.DATABASE_URL
 
 const pool = new Pool(poolConfig);
 
-let isDbConnected = false;
+let isDbConnected = Boolean(process.env.DATABASE_URL);
 
 // Test DB Connection
 const checkDbConnection = async () => {
