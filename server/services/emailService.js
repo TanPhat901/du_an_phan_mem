@@ -125,8 +125,16 @@ function sendSmtpEmail({ to, subject, htmlContent, textContent }) {
 /**
  * Gửi mã OTP xác thực qua email với template HTML đẹp mắt
  */
-async function sendOtpEmail(toEmail, otpCode) {
-  const subject = `[SportsBooking] Mã xác thực OTP của bạn là: ${otpCode}`;
+async function sendOtpEmail(toEmail, otpCode, purpose = 'register') {
+  const isReset = purpose === 'reset';
+  const subject = isReset
+    ? `[SportsBooking] Mã xác thực OTP đặt lại mật khẩu: ${otpCode}`
+    : `[SportsBooking] Mã xác thực tài khoản: ${otpCode}`;
+
+  const title = isReset ? 'Khôi phục mật khẩu tài khoản' : 'Xác thực tài khoản của bạn';
+  const desc = isReset
+    ? 'Bạn đang thực hiện yêu cầu đặt lại mật khẩu trên hệ thống SportsBooking. Vui lòng nhập mã OTP dưới đây để tạo mật khẩu mới:'
+    : 'Bạn đang thực hiện thao tác đăng ký tài khoản trên hệ thống SportsBooking. Vui lòng nhập mã OTP dưới đây để hoàn tất:';
   
   const htmlContent = `
     <!DOCTYPE html>
@@ -137,8 +145,8 @@ async function sendOtpEmail(toEmail, otpCode) {
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
         .container { max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
         .header { background: #0b4d3c; padding: 28px; text-align: center; color: #ffffff; }
-        .header h1 { margin: 0; font-size: 24px; font-weight: 800; }
-        .header p { margin: 6px 0 0; opacity: 0.85; font-size: 14px; }
+        .header h1 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+        .header p { margin: 6px 0 0; opacity: 0.85; font-size: 13px; }
         .body { padding: 32px 28px; text-align: center; }
         .otp-badge { display: inline-block; background: #f0fdf4; border: 2px dashed #0b4d3c; color: #0b4d3c; font-size: 32px; font-weight: 800; letter-spacing: 8px; padding: 14px 28px; border-radius: 12px; margin: 20px 0; }
         .alert-box { background: #fef2f2; border: 1px solid #fee2e2; border-radius: 10px; padding: 12px; font-size: 13px; color: #991b1b; text-align: left; margin-top: 20px; }
@@ -152,9 +160,9 @@ async function sendOtpEmail(toEmail, otpCode) {
           <p>Nền tảng tìm kiếm và đặt sân thể thao số 1 Việt Nam</p>
         </div>
         <div class="body">
-          <h2 style="margin: 0 0 12px; font-size: 20px; color: #0f172a;">Mã xác thực tài khoản của bạn</h2>
+          <h2 style="margin: 0 0 12px; font-size: 20px; color: #0f172a;">${title}</h2>
           <p style="margin: 0; color: #475569; font-size: 14px; line-height: 1.6;">
-            Bạn đang thực hiện thao tác đăng ký tài khoản trên hệ thống SportsBooking. Vui lòng nhập mã OTP dưới đây để hoàn tất:
+            ${desc}
           </p>
           <div class="otp-badge">${otpCode}</div>
           <p style="margin: 0; color: #64748b; font-size: 13px;">
@@ -165,7 +173,7 @@ async function sendOtpEmail(toEmail, otpCode) {
           </div>
         </div>
         <div class="footer">
-          © 2025 SportsBooking Vietnam.
+          © 2026 SportsBooking Vietnam. Đã đăng ký bản quyền.
         </div>
       </div>
     </body>
